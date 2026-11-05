@@ -3,11 +3,6 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "book": "node src/book.mjs",
-    "recon": "node src/book.mjs --recon",
-    "test": "node --test test/*.test.mjs"
-  },
-  "dependencies": {
-    "playwright": "1.48.2"
+    "test": "node --test --experimental-test-module-mocks test/*.test.mjs"
   }
 }

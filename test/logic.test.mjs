@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { targetWeekend, dublinInstant } from "../src/time.mjs";
-import { orderSlots, playersFor, nameMatches } from "../src/slots.mjs";
+import { targetWeekend, dublinInstant } from "../src/lib/time.mjs";
+import { orderSlots, playersFor, nameMatches } from "../src/lib/slots.mjs";
 
 test("targets this week's weekend on Monday before opening", () => {
   assert.deepEqual(targetWeekend("19:16", new Date("2026-11-09T18:00:00Z")), { opens: "2026-11-09", sat: "2026-11-14", sun: "2026-11-15" });

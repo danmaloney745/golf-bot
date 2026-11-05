@@ -1,29 +1,34 @@
 # golf-bot
 
-Books the Saturday/Sunday tee time at Craddockstown on BRS when bookings open on **Monday at 19:16** (Dublin time). It tries every slot from **07:20** onwards, earliest first, and moves to the next free slot if one fails.
+Books the weekend tee time at Craddockstown on BRS when bookings open on **Monday at 19:16** (Dublin time). It tries slots from **07:20** onwards, earliest first, and moves to the next free slot if one fails.
 
-## How a week runs
+## How it works (AWS, eu-west-1)
 
-1. Dan, Mark and Hugh tick Sat/Sun on the availability page.
-2. Monday ~18:55: a Claude scheduled task copies the ticks into `availability.json` and pushes it.
-3. Monday 16:30 UTC: the GitHub Action starts, logs in a few minutes before 19:16, pulls the latest `availability.json`, and books each day for whoever ticked it.
-4. The run summary says what was booked; screenshots of every step are saved as a run artifact for 14 days.
+- **Availability page**: a Lambda function URL serves the page and its small API. Dan, Mark and Hugh tick Sat/Sun. The ticks are stored in DynamoDB, one item per weekend. The link needs `?k=<PAGE_KEY>`.
+- **Booking**: EventBridge Scheduler starts the booking Lambda at **19:10 Europe/Dublin** every Monday. It logs in, reads the ticks 30 seconds before opening, and books at 19:16. The result shows on the page under each weekend.
+- **Screenshots and logs** of every run go to an S3 bucket, kept for 30 days.
 
-Bookings go through Dan's BRS account, so a day is only booked if Dan has ticked it. The bot refuses to book if `availability.json` isn't for the right weekend.
+Bookings go through Dan's BRS account, so a day is only booked if Dan has ticked it. A failed run is never retried automatically.
 
 ## Setup
 
-Repo **Settings → Secrets and variables → Actions**, add:
+Add these repo secrets under **Settings → Secrets and variables → Actions**:
 
-- `BRS_USERNAME`: your BRS username or membership number
-- `BRS_PASSWORD`: your BRS password
+| Secret | What |
+| --- | --- |
+| `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY` | IAM user that can deploy CloudFormation/SAM stacks |
+| `BRS_USERNAME`, `BRS_PASSWORD` | BRS login. The deploy copies them into SSM SecureString parameters |
+| `PAGE_KEY` | Any phrase. It's the `?k=` on the page link |
+
+Every push to `main` deploys. The run summary prints the page link.
 
 ## Testing
 
-**Actions → Book tee time → Run workflow**:
+**Actions → Test run → Run workflow**:
 
-- `recon`: logs in, saves the tee sheet and the booking form. Books nothing.
-- `dry-run`: does everything except press the final confirm button.
-- `book`: a real booking.
+- `recon`: logs in and captures the tee sheet and booking form. Books nothing.
+- `dry-run`: picks a slot and fills in the players, but never presses confirm.
 
-Settings like the earliest tee time live in `config.json`.
+Screenshots land on the `runs` branch.
+
+Tee times, opening time and player names live in `src/config.json`.

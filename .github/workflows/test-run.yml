@@ -1,0 +1,57 @@
+name: Test run
+
+# Runs the booking Lambda now and saves its screenshots to the `runs` branch.
+# recon:   log in, capture the tee sheet and booking form, book nothing
+# dry-run: pick slots and fill in players, but never press the final confirm
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        type: choice
+        options: [recon, dry-run]
+        default: recon
+
+concurrency:
+  group: test-run
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  AWS_REGION: eu-west-1
+  STACK: golf-bot
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Invoke booker
+        run: |
+          out() { aws cloudformation describe-stacks --stack-name "$STACK" --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }
+          FN=$(out BookerFunctionName); BUCKET=$(out RunsBucketName)
+          echo "BUCKET=$BUCKET" >> "$GITHUB_ENV"
+          aws lambda invoke --function-name "$FN" --cli-read-timeout 900 \
+            --cli-binary-format raw-in-base64-out \
+            --payload '{"mode":"${{ inputs.mode }}","now":true}' result.json | tee invoke.json
+          cat result.json
+          jq -r '.log[]? // empty' result.json >> "$GITHUB_STEP_SUMMARY" || true
+          RUN=$(jq -r '.runId // empty' result.json)
+          [ -z "$RUN" ] && RUN=$(aws s3 ls "s3://$BUCKET/runs/" | awk '{print $2}' | sort | tail -1 | tr -d /)
+          echo "RUN=$RUN" >> "$GITHUB_ENV"
+      - name: Save screenshots to the runs branch
+        if: always()
+        run: |
+          [ -n "$RUN" ] || exit 0
+          git init -q runs && cd runs
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}"
+          git fetch -q --depth 1 origin runs && git checkout -q runs || git checkout -q --orphan runs
+          aws s3 cp "s3://$BUCKET/runs/$RUN/" "$RUN/" --recursive --only-show-errors
+          git add -A
+          git -c user.name="golf-bot" -c user.email="golf-bot@users.noreply.github.com" commit -q -m "Run $RUN" && git push -q origin runs
+          echo "Screenshots: branch \`runs\`, folder \`$RUN\`" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,103 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: AWS::Serverless-2016-10-31
+Description: Craddockstown tee-time bot - availability page and Monday booking Lambda
+
+Parameters:
+  PageKey:
+    Type: String
+    NoEcho: true
+    Description: Shared key required on the availability page link (?k=...)
+
+Globals:
+  Function:
+    Runtime: nodejs22.x
+    Architectures: [x86_64]
+    CodeUri: src/
+    Environment:
+      Variables:
+        TABLE_NAME: !Ref AvailabilityTable
+
+Resources:
+  AvailabilityTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - { AttributeName: weekendOf, AttributeType: S }
+      KeySchema:
+        - { AttributeName: weekendOf, KeyType: HASH }
+
+  RunsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - { Id: expire-runs, Status: Enabled, ExpirationInDays: 30 }
+
+  PageFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: api/handler.handler
+      MemorySize: 256
+      Timeout: 10
+      Environment:
+        Variables:
+          PAGE_KEY: !Ref PageKey
+      FunctionUrlConfig:
+        AuthType: NONE
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref AvailabilityTable }
+
+  # Public function URLs also need lambda:InvokeFunction, scoped to calls via the URL.
+  PageFunctionUrlInvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref PageFunction
+      Action: lambda:InvokeFunction
+      Principal: "*"
+      InvokedViaFunctionUrl: true
+
+  BookerFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: booker/handler.handler
+      MemorySize: 2048
+      Timeout: 900
+      EphemeralStorage: { Size: 1024 }
+      # Never re-run a failed booking automatically: a late retry could book the wrong slot.
+      EventInvokeConfig:
+        MaximumRetryAttempts: 0
+      Environment:
+        Variables:
+          RUNS_BUCKET: !Ref RunsBucket
+      Policies:
+        - DynamoDBCrudPolicy: { TableName: !Ref AvailabilityTable }
+        - S3WritePolicy: { BucketName: !Ref RunsBucket }
+        - Statement:
+            - Effect: Allow
+              Action: [ssm:GetParameters]
+              Resource: !Sub arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter/golf-bot/*
+      Events:
+        MondayBooking:
+          Type: ScheduleV2
+          Properties:
+            # Starts at 19:10 so it's logged in and waiting when bookings open at 19:16.
+            ScheduleExpression: cron(10 19 ? * MON *)
+            ScheduleExpressionTimezone: Europe/Dublin
+            Input: '{"mode":"book"}'
+            RetryPolicy:
+              MaximumRetryAttempts: 0
+
+Outputs:
+  PageUrl:
+    Description: Availability page base URL (add ?k=<PAGE_KEY>)
+    Value: !GetAtt PageFunctionUrl.FunctionUrl
+  BookerFunctionName:
+    Value: !Ref BookerFunction
+  RunsBucketName:
+    Value: !Ref RunsBucket

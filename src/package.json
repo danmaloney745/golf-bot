@@ -1,0 +1,9 @@
+{
+  "name": "golf-bot-functions",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "@sparticuz/chromium": "130.0.0",
+    "playwright-core": "1.48.2"
+  }
+}

@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Craddockstown Weekend Three-Ball</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@500&display=swap">
+<style>
+/* Layout: a single tee-sheet column — one card per weekend, rows per player, Sat/Sun as tick boxes */
+:root{
+  --bg:#eef2ee; --card:#ffffff; --ink:#15281d; --muted:#5d6f63; --line:#d3ddd5;
+  --green:#1f5c3a; --green-soft:#dbeadf; --flag:#e8b923; --flag-ink:#3d2f00; --err:#b3261e;
+  --display:"Familjen Grotesk",ui-sans-serif,system-ui,sans-serif;
+  --body:"IBM Plex Sans",ui-sans-serif,system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,Menlo,monospace;
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#0f1712; --card:#16211a; --ink:#e3ece5; --muted:#93a698; --line:#2a3a2f;
+  --green:#6fc28f; --green-soft:#1d3426; --flag:#f0c94a; --flag-ink:#2a2000; --err:#f2b8b5; color-scheme:dark}}
+*{box-sizing:border-box}
+html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--body);font-size:15px;line-height:1.5}
+.wrap{max-width:560px;margin:0 auto;padding-block:24px 40px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:grid;gap:20px}
+header h1{font-family:var(--display);font-weight:700;font-size:1.75rem;line-height:1.1;margin:0;text-wrap:balance}
+header p{margin:6px 0 0;color:var(--muted)}
+.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+#cards{display:grid;gap:20px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;overflow:hidden}
+.card-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;flex-wrap:wrap;padding:14px 16px;border-bottom:1px solid var(--line)}
+.card-head h2{font-family:var(--display);font-size:1.15rem;margin:0}
+.eyebrow{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.pill{font-size:.75rem;font-weight:600;padding:2px 9px;border-radius:99px;background:var(--flag);color:var(--flag-ink)}
+.pill.later{background:var(--green-soft);color:var(--green)}
+table{width:100%;border-collapse:collapse}
+th,td{padding:10px 16px;text-align:left}
+th{font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:500}
+th.day,td.day{text-align:center;width:84px}
+tbody tr{border-top:1px solid var(--line)}
+td.name{font-weight:500}
+.tick{appearance:none;width:30px;height:30px;margin:0;border:2px solid var(--line);border-radius:6px;background:transparent;cursor:pointer;display:inline-grid;place-items:center;transition:background .15s,border-color .15s}
+.tick:checked{background:var(--green);border-color:var(--green)}
+.tick:checked::after{content:"";width:8px;height:14px;border:solid var(--card);border-width:0 3px 3px 0;transform:translateY(-2px) rotate(45deg)}
+.tick:focus-visible{outline:3px solid var(--flag);outline-offset:2px}
+.tick:disabled{cursor:wait;opacity:.6}
+tfoot td{border-top:1px solid var(--line);background:var(--green-soft);color:var(--green);font-weight:600;font-size:.85rem}
+tfoot tr.result td{background:var(--card);color:var(--ink)}
+.note{font-size:.85rem;color:var(--muted);margin:0}
+.status{font-size:.85rem;color:var(--muted);min-height:1.3em;margin:0}
+.status.err{color:var(--err)}
+@media (prefers-reduced-motion:reduce){.tick{transition:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="eyebrow">Craddockstown · weekend tee time</div>
+    <h1>Who's playing?</h1>
+    <p>Tick the days you can play. The bot books for whoever's ticked when bookings open on Monday at <span class="mono">__OPENS_AT__</span>, starting from <span class="mono">__EARLIEST__</span>.</p>
+  </header>
+  <div id="cards"></div>
+  <p class="status" id="status" role="status">Loading availability…</p>
+  <p class="note">Changes save as soon as you tick. If a slot is gone, the bot tries the next free time.</p>
+</div>
+<script>
+const PLAYERS=__PLAYERS__;
+const OPENS="__OPENS_AT__".split(":").map(Number);
+const KEY=new URLSearchParams(location.search).get("k")||"";
+const statusEl=document.getElementById("status"), cardsEl=document.getElementById("cards");
+const setStatus=(t,err)=>{statusEl.textContent=t;statusEl.classList.toggle("err",!!err);};
+
+function dublinNow(){
+  const p=Object.fromEntries(new Intl.DateTimeFormat("en-GB",{timeZone:"Europe/Dublin",year:"numeric",month:"2-digit",day:"2-digit",hour:"2-digit",minute:"2-digit",hourCycle:"h23"}).formatToParts(new Date()).map(x=>[x.type,x.value]));
+  return {y:+p.year,m:+p.month,d:+p.day,h:+p.hour,min:+p.minute};
+}
+const iso=dt=>dt.toISOString().slice(0,10);
+const addDays=(dt,n)=>new Date(dt.getTime()+n*864e5);
+const fmt=(dt,o)=>dt.toLocaleDateString("en-IE",{timeZone:"UTC",...o});
+function weekends(){
+  const n=dublinNow(), today=new Date(Date.UTC(n.y,n.m-1,n.d));
+  let toMon=(1-today.getUTCDay()+7)%7;
+  if(toMon===0 && n.h*60+n.min>=OPENS[0]*60+OPENS[1]+30) toMon=7;
+  const mon=addDays(today,toMon);
+  return [0,7].map(off=>{const m=addDays(mon,off);return {opens:m,sat:addDays(m,5),sun:addDays(m,6)};});
+}
+
+const state={}; const busy=new Set();
+function render(){
+  const focusId=document.activeElement&&document.activeElement.id;
+  cardsEl.innerHTML="";
+  weekends().forEach((w,i)=>{
+    const id=iso(w.sat), doc=state[id]||{};
+    const ticked=(d,k)=>!!(doc[d]&&doc[d][k]);
+    const count=d=>PLAYERS.filter(([k])=>ticked(d,k)).length;
+    const label=c=>c===0?"No booking":c===1?"1 player":c+"-ball";
+    const r=doc.result;
+    const resultCell=d=>r?(r[d]?"Booked "+r[d]:(count(d)?"Not booked":"—")):"";
+    const card=document.createElement("section");
+    card.className="card";
+    card.innerHTML=`
+      <div class="card-head">
+        <div><div class="eyebrow">Sat ${fmt(w.sat,{day:"numeric",month:"short"})} – Sun ${fmt(w.sun,{day:"numeric",month:"short"})}</div>
+        <h2>${i===0?"Next booking":"Week after"}</h2></div>
+        <span class="pill ${i?"later":""}">Books ${fmt(w.opens,{weekday:"short",day:"numeric",month:"short"})} · ${OPENS.map(x=>String(x).padStart(2,"0")).join(":")}</span>
+      </div>
+      <table>
+        <thead><tr><th>Player</th><th class="day">Sat</th><th class="day">Sun</th></tr></thead>
+        <tbody>${PLAYERS.map(([k,name])=>`<tr><td class="name"></td>
+          ${["sat","sun"].map(d=>`<td class="day"><input type="checkbox" class="tick" id="t-${id}-${d}-${k}" data-w="${id}" data-d="${d}" data-p="${k}" ${ticked(d,k)?"checked":""} ${busy.has(id)?"disabled":""}></td>`).join("")}
+        </tr>`).join("")}</tbody>
+        <tfoot><tr><td>Booking</td><td class="day">${label(count("sat"))}</td><td class="day">${label(count("sun"))}</td></tr>
+        ${r?`<tr class="result"><td>Result</td><td class="day mono">${resultCell("sat")}</td><td class="day mono">${resultCell("sun")}</td></tr>`:""}</tfoot>
+      </table>`;
+    card.querySelectorAll("td.name").forEach((td,j)=>{td.textContent=PLAYERS[j][1];});
+    card.querySelectorAll(".tick").forEach(t=>{const n=PLAYERS.find(p=>p[0]===t.dataset.p)[1];t.setAttribute("aria-label",`${n} ${t.dataset.d==="sat"?"Saturday":"Sunday"}`);});
+    cardsEl.appendChild(card);
+  });
+  if(focusId){const el=document.getElementById(focusId); if(el) el.focus();}
+}
+
+async function load(){
+  const ids=weekends().map(w=>iso(w.sat)).join(",");
+  try{
+    const res=await fetch(`/api/weekends?ids=${ids}&k=${encodeURIComponent(KEY)}`,{cache:"no-store"});
+    if(!res.ok) throw new Error(res.status);
+    const {weekends:ws}=await res.json();
+    ws.forEach(w=>{ if(!busy.has(w.weekendOf)) state[w.weekendOf]=w; });
+    render(); setStatus("Up to date.");
+  }catch(e){ setStatus("Couldn't load availability. Check your connection; it will retry.",true); }
+}
+
+cardsEl.addEventListener("change",async ev=>{
+  const t=ev.target; if(!t.classList.contains("tick")) return;
+  const {w,d,p}=t.dataset, value=t.checked;
+  busy.add(w); setStatus("Saving…");
+  try{
+    const res=await fetch(`/api/tick?k=${encodeURIComponent(KEY)}`,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({weekend:w,day:d,player:p,value})});
+    if(!res.ok) throw new Error(res.status);
+    state[w]=state[w]||{}; state[w][d]={...(state[w][d]||{}),[p]:value};
+    setStatus("Saved.");
+  }catch(e){ t.checked=!value; setStatus("Didn't save. Check your connection and tick again.",true); }
+  finally{ busy.delete(w); render(); }
+});
+
+render(); load(); setInterval(()=>{ if(!document.hidden && !busy.size) load(); },20000);
+</script>
+</body>
+</html>

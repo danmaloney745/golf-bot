@@ -1,0 +1,57 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["README.md"]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: eu-west-1
+  STACK: golf-bot
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm test
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - uses: aws-actions/setup-sam@v2
+        with:
+          use-installer: true
+      - name: Store BRS login in SSM (encrypted)
+        env:
+          BRS_USERNAME: ${{ secrets.BRS_USERNAME }}
+          BRS_PASSWORD: ${{ secrets.BRS_PASSWORD }}
+        run: |
+          [ -n "$BRS_USERNAME" ] && [ -n "$BRS_PASSWORD" ] || { echo "::error::Add BRS_USERNAME and BRS_PASSWORD repo secrets"; exit 1; }
+          aws ssm put-parameter --name /golf-bot/brs-username --type SecureString --value "$BRS_USERNAME" --overwrite >/dev/null
+          aws ssm put-parameter --name /golf-bot/brs-password --type SecureString --value "$BRS_PASSWORD" --overwrite >/dev/null
+      - run: sam build
+      - name: Deploy stack
+        env:
+          PAGE_KEY: ${{ secrets.PAGE_KEY }}
+        run: |
+          [ -n "$PAGE_KEY" ] || { echo "::error::Add a PAGE_KEY repo secret"; exit 1; }
+          sam deploy --stack-name "$STACK" --resolve-s3 --capabilities CAPABILITY_IAM \
+            --no-confirm-changeset --no-fail-on-empty-changeset \
+            --parameter-overrides "PageKey=$PAGE_KEY"
+      - name: Page link
+        run: |
+          URL=$(aws cloudformation describe-stacks --stack-name "$STACK" --query "Stacks[0].Outputs[?OutputKey=='PageUrl'].OutputValue" --output text)
+          echo "Availability page: ${URL}?k=<your PAGE_KEY>" | tee -a "$GITHUB_STEP_SUMMARY"
