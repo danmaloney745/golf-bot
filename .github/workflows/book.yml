@@ -1,0 +1,56 @@
+name: Book tee time
+
+on:
+  schedule:
+    # Mondays 16:30 UTC (16:30 Dublin in winter, 17:30 in summer).
+    # Starts early because GitHub can delay scheduled runs; the bot then waits for 19:16 Dublin.
+    - cron: "30 16 * * 1"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "recon = log in and screenshot only; dry-run = everything but the final confirm; book = real booking"
+        type: choice
+        options: [recon, dry-run, book]
+        default: recon
+      now:
+        description: "Run immediately instead of waiting for Monday 19:16"
+        type: boolean
+        default: true
+
+concurrency:
+  group: booking
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  book:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
+      - name: Run bot
+        env:
+          BRS_USERNAME: ${{ secrets.BRS_USERNAME }}
+          BRS_PASSWORD: ${{ secrets.BRS_PASSWORD }}
+        run: |
+          FLAGS=""
+          MODE="${{ github.event.inputs.mode || 'book' }}"
+          [ "$MODE" = "recon" ] && FLAGS="--recon"
+          [ "$MODE" = "dry-run" ] && FLAGS="--dry-run"
+          [ "${{ github.event.inputs.now }}" = "true" ] && FLAGS="$FLAGS --now"
+          node src/book.mjs $FLAGS
+      - name: Save screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bot-run-${{ github.run_id }}
+          path: out/
+          retention-days: 14

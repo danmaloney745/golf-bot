@@ -1,0 +1,15 @@
+{
+  "club": "craddockstown",
+  "baseUrl": "https://members.brsgolf.com",
+  "courseId": 1,
+  "teeSheetPath": "/{club}/tee-sheet/{courseId}/{yyyy}/{mm}/{dd}",
+  "opensAt": "19:16",
+  "earliestTeeTime": "07:20",
+  "latestTeeTime": "12:00",
+  "retryWindowSeconds": 180,
+  "players": {
+    "dan": { "name": "Daniel Maloney", "isBookingAccount": true },
+    "mark": { "name": "Mark Armstrong" },
+    "hugh": { "name": "Hugh Crowther" }
+  }
+}
