@@ -95,6 +95,8 @@ Resources:
       Environment:
         Variables:
           RUNS_BUCKET: !Ref RunsBucket
+          # Tells @sparticuz/chromium to unpack the Amazon Linux 2023 libraries it bundles.
+          AWS_LAMBDA_JS_RUNTIME: nodejs22.x
       Policies:
         - DynamoDBCrudPolicy: { TableName: !Ref AvailabilityTable }
         - S3WritePolicy: { BucketName: !Ref RunsBucket }

@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
-    "@sparticuz/chromium": "130.0.0",
-    "playwright-core": "1.48.2"
+    "@sparticuz/chromium": "131.0.1",
+    "playwright-core": "1.49.1"
   }
 }

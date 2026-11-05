@@ -32,7 +32,10 @@ export async function handler(event = {}) {
   const weekend = targetWeekend(config.opensAt);
   log(`Mode ${mode}, target weekend ${weekend.sat}/${weekend.sun}, opens ${weekend.opens} ${config.opensAt}`);
 
-  const browser = await pw.launch({ executablePath: await chromium.executablePath(), args: chromium.args, headless: true });
+  const executablePath = await chromium.executablePath();
+  // Chromium's bundled system libraries are unpacked under /tmp; make sure the child process finds them.
+  process.env.LD_LIBRARY_PATH = ["/tmp/al2023/lib", "/tmp/al2/lib", "/tmp", process.env.LD_LIBRARY_PATH].filter(Boolean).join(":");
+  const browser = await pw.launch({ executablePath, args: chromium.args, headless: true });
   const page = await (await browser.newContext({ timezoneId: "Europe/Dublin", viewport: { width: 1280, height: 900 } })).newPage();
   page.setDefaultTimeout(15000);
 
