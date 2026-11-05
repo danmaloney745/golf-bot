@@ -96,11 +96,18 @@ async function tryBook(page, dayIso, slot, partners, { dryRun, snap }) {
 export async function bookDay(page, config, dayIso, partners, { dryRun, snap, log }) {
   const deadline = Date.now() + config.retryWindowSeconds * 1000;
   const tried = new Set();
+  // One load at opening time; if entry isn't showing yet, reload every 3s, at most 8 times.
+  let emptyLoads = 0;
   while (Date.now() < deadline) {
     await page.goto(teeSheetUrl(config, dayIso), { waitUntil: "domcontentloaded" });
+    await page.locator(".size-marker").first().waitFor({ timeout: 10000 }).catch(() => {});
     const slots = orderSlots(await findSlots(page), config.earliestTeeTime, config.latestTeeTime, partners.length + 1)
       .filter((s) => !tried.has(s.time));
-    if (!slots.length) { await sleep(1500); continue; }
+    if (!slots.length) {
+      if (++emptyLoads >= 8) { log(`${dayIso}: no enterable slots after ${emptyLoads} loads`); await snap(`${dayIso}-no-slots`); break; }
+      await sleep(3000);
+      continue;
+    }
     const slot = slots[0];
     tried.add(slot.time);
     try {
