@@ -28,7 +28,7 @@ export async function findSlots(page) {
   return page.evaluate(() => {
     const out = [];
     const controls = [...document.querySelectorAll("a, button")]
-      .filter((el) => /^\s*book\b/i.test(el.textContent || "") && !el.disabled);
+      .filter((el) => /^\s*(book|enter)\b/i.test(el.textContent || "") && !el.disabled);
     controls.forEach((el, i) => {
       el.setAttribute("data-bot-book", String(i));
       let node = el, time = null;

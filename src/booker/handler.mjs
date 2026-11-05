@@ -58,14 +58,17 @@ export async function handler(event = {}) {
     log("Logged in");
 
     if (mode === "recon") {
-      await page.goto(teeSheetUrl(config, weekend.sat), { waitUntil: "domcontentloaded" });
-      await snap("tee-sheet");
-      const slots = await findSlots(page);
-      log(`Book buttons found: ${JSON.stringify(slots)}`);
-      if (slots.length) {
-        await page.locator(`[data-bot-book="${slots[0].index}"]`).click();
-        await page.waitForLoadState("domcontentloaded");
-        await snap("booking-form");
+      // Look at both tee sheets. Only open a booking form when asked ({click: true}): BRS holds the slot while it's open.
+      for (const day of event.dates || [weekend.sat, weekend.sun]) {
+        await page.goto(teeSheetUrl(config, day), { waitUntil: "domcontentloaded" });
+        await snap(`tee-sheet-${day}`);
+        const slots = await findSlots(page);
+        log(`${day}: book/enter buttons found: ${JSON.stringify(slots.slice(0, 10))}${slots.length > 10 ? ` (+${slots.length - 10} more)` : ""}`);
+        if (event.click && slots.length) {
+          await page.locator(`[data-bot-book="${slots[0].index}"]`).click();
+          await page.waitForLoadState("domcontentloaded");
+          await snap(`booking-form-${day}`);
+        }
       }
       return result;
     }
