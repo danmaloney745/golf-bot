@@ -63,6 +63,8 @@ Resources:
       Handler: api/handler.handler
       MemorySize: 256
       Timeout: 10
+      # At most 2 copies run at once: plenty for three people, and caps how fast a flood can cost anything.
+      ReservedConcurrentExecutions: 2
       Environment:
         Variables:
           PAGE_KEY: !Ref PageKey
