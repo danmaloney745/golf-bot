@@ -1,0 +1,4 @@
+2026-11-05T07:37:45.149Z Mode recon, target weekend 2026-11-14/2026-11-15, opens 2026-11-09 19:16
+2026-11-05T07:37:53.180Z Logged in
+2026-11-05T07:37:57.208Z 2026-11-14: book/enter buttons found: []
+2026-11-05T07:38:01.240Z 2026-11-15: book/enter buttons found: []
