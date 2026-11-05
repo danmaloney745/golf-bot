@@ -28,3 +28,8 @@ test("name matching handles 'Surname, First'", () => {
   assert.ok(nameMatches("Armstrong, Mark (12.4)", "Mark Armstrong"));
   assert.ok(!nameMatches("Armstrong, Mary", "Mark Armstrong"));
 });
+
+test("skips slots without room for everyone", () => {
+  const got = orderSlots([{ time: "07:40", free: 2 }, { time: "07:48", free: 4 }, { time: "07:56", free: null }], "07:20", "12:00", 3);
+  assert.deepEqual(got.map((s) => s.time), ["07:48", "07:56"]);
+});

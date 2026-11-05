@@ -23,20 +23,36 @@ export async function login(page, config, { user, pass }, snap) {
   }
 }
 
-/** Every enabled "Book" control on the tee sheet, with the tee time found in its row. */
+/**
+ * Every enabled "Book"/"Enter" control on the tee sheet, with its tee time and free spaces.
+ * BRS renders each tee time as a <tr>: the time in a .size-marker in the row's <th>, and four
+ * player spaces as div.flex.items-center cells (a name or "x" when taken, empty when free).
+ * `free` is null when the row's spaces can't be read, so the caller doesn't skip it on a guess.
+ */
 export async function findSlots(page) {
   return page.evaluate(() => {
     const out = [];
+    const TIME = /\b([01]\d|2[0-3])[:.]([0-5]\d)\b/;
+    const visible = (el) => !!(el.offsetParent || el.getClientRects().length);
     const controls = [...document.querySelectorAll("a, button")]
-      .filter((el) => /^\s*(book|enter)\b/i.test(el.textContent || "") && !el.disabled);
+      .filter((el) => /^\s*(book|enter)\b/i.test(el.textContent || "") && !el.disabled && visible(el));
     controls.forEach((el, i) => {
       el.setAttribute("data-bot-book", String(i));
-      let node = el, time = null;
-      for (let up = 0; up < 8 && node && !time; up++, node = node.parentElement) {
-        const m = (node.innerText || "").match(/\b([01]\d|2[0-3])[:.]([0-5]\d)\b/);
+      const row = el.closest("tr");
+      let time = null;
+      const marker = row?.querySelector(".size-marker");
+      const mm = marker && (marker.textContent || "").match(TIME);
+      if (mm) time = `${mm[1]}:${mm[2]}`;
+      for (let node = el, up = 0; !time && node && up < 8; up++, node = node.parentElement) {
+        const m = (node.innerText || "").match(TIME);
         if (m) time = `${m[1]}:${m[2]}`;
       }
-      if (time) out.push({ time, index: i });
+      let free = null;
+      if (row) {
+        const spaces = [...row.querySelectorAll("td div.flex.items-center")].filter(visible);
+        if (spaces.length) free = spaces.filter((s) => !(s.textContent || "").trim()).length;
+      }
+      if (time) out.push({ time, index: i, free });
     });
     return out;
   });
@@ -82,7 +98,7 @@ export async function bookDay(page, config, dayIso, partners, { dryRun, snap, lo
   const tried = new Set();
   while (Date.now() < deadline) {
     await page.goto(teeSheetUrl(config, dayIso), { waitUntil: "domcontentloaded" });
-    const slots = orderSlots(await findSlots(page), config.earliestTeeTime, config.latestTeeTime)
+    const slots = orderSlots(await findSlots(page), config.earliestTeeTime, config.latestTeeTime, partners.length + 1)
       .filter((s) => !tried.has(s.time));
     if (!slots.length) { await sleep(1500); continue; }
     const slot = slots[0];

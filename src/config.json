@@ -5,7 +5,7 @@
   "teeSheetPath": "/{club}/tee-sheet/{courseId}/{yyyy}/{mm}/{dd}",
   "opensAt": "19:16",
   "earliestTeeTime": "07:20",
-  "latestTeeTime": "12:00",
+  "latestTeeTime": "23:59",
   "retryWindowSeconds": 180,
   "players": {
     "dan": { "name": "Daniel Maloney", "isBookingAccount": true },
