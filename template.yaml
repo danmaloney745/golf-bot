@@ -21,11 +21,17 @@ Resources:
   AvailabilityTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      BillingMode: PAY_PER_REQUEST
+      # 1 read/1 write unit sits inside DynamoDB's always-free 25/25; on-demand isn't free-tier.
+      BillingMode: PROVISIONED
+      ProvisionedThroughput: { ReadCapacityUnits: 1, WriteCapacityUnits: 1 }
       AttributeDefinitions:
         - { AttributeName: weekendOf, AttributeType: S }
       KeySchema:
         - { AttributeName: weekendOf, KeyType: HASH }
+      # Each weekend's item deletes itself two weeks after that Sunday (TTL deletes are free).
+      TimeToLiveSpecification:
+        AttributeName: expiresAt
+        Enabled: true
 
   RunsBucket:
     Type: AWS::S3::Bucket
@@ -37,7 +43,19 @@ Resources:
         RestrictPublicBuckets: true
       LifecycleConfiguration:
         Rules:
-          - { Id: expire-runs, Status: Enabled, ExpirationInDays: 30 }
+          - { Id: expire-runs, Status: Enabled, ExpirationInDays: 14 }
+
+  PageLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${PageFunction}
+      RetentionInDays: 7
+
+  BookerLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${BookerFunction}
+      RetentionInDays: 14
 
   PageFunction:
     Type: AWS::Serverless::Function

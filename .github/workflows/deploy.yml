@@ -51,6 +51,13 @@ jobs:
           sam deploy --stack-name "$STACK" --resolve-s3 --capabilities CAPABILITY_IAM \
             --no-confirm-changeset --no-fail-on-empty-changeset \
             --parameter-overrides "PageKey=$PAGE_KEY"
+      - name: Expire old deploy packages
+        # SAM uploads a new code zip on every deploy; nothing needs them once the stack is updated.
+        run: |
+          BUCKET=$(aws cloudformation describe-stacks --stack-name aws-sam-cli-managed-default --query "Stacks[0].Outputs[?OutputKey=='SourceBucket'].OutputValue" --output text 2>/dev/null || true)
+          [ -n "$BUCKET" ] && [ "$BUCKET" != "None" ] || exit 0
+          aws s3api put-bucket-lifecycle-configuration --bucket "$BUCKET" --lifecycle-configuration \
+            '{"Rules":[{"ID":"expire-deploy-packages","Status":"Enabled","Filter":{"Prefix":""},"Expiration":{"Days":7},"NoncurrentVersionExpiration":{"NoncurrentDays":1}}]}'
       - name: Page link
         run: |
           URL=$(aws cloudformation describe-stacks --stack-name "$STACK" --query "Stacks[0].Outputs[?OutputKey=='PageUrl'].OutputValue" --output text)

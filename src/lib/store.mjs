@@ -6,6 +6,9 @@ import { DynamoDBDocumentClient, GetCommand, UpdateCommand, BatchGetCommand } fr
 const doc = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const Table = () => process.env.TABLE_NAME;
 
+/** Epoch seconds two weeks after the weekend's Sunday, when DynamoDB TTL removes the item. */
+export const expiryFor = (weekendOf) => Math.floor(Date.parse(`${weekendOf}T00:00:00Z`) / 1000) + 15 * 86400;
+
 export async function getWeekend(weekendOf) {
   const { Item } = await doc.send(new GetCommand({ TableName: Table(), Key: { weekendOf } }));
   return Item || null;
@@ -26,15 +29,17 @@ export async function setTick(weekendOf, day, player, value) {
   }));
   await doc.send(new UpdateCommand({
     TableName: Table(), Key: { weekendOf },
-    UpdateExpression: "SET #d.#p = :v, updatedAt = :t",
+    UpdateExpression: "SET #d.#p = :v, updatedAt = :t, expiresAt = :x",
     ExpressionAttributeNames: { "#d": day, "#p": player },
-    ExpressionAttributeValues: { ":v": value, ":t": new Date().toISOString() },
+    ExpressionAttributeValues: { ":v": value, ":t": new Date().toISOString(), ":x": expiryFor(weekendOf) },
   }));
 }
 
 export async function saveResult(weekendOf, result) {
   await doc.send(new UpdateCommand({
     TableName: Table(), Key: { weekendOf },
-    UpdateExpression: "SET #r = :r", ExpressionAttributeNames: { "#r": "result" }, ExpressionAttributeValues: { ":r": result },
+    UpdateExpression: "SET #r = :r, expiresAt = :x",
+    ExpressionAttributeNames: { "#r": "result" },
+    ExpressionAttributeValues: { ":r": result, ":x": expiryFor(weekendOf) },
   }));
 }
