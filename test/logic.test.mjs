@@ -33,3 +33,9 @@ test("skips slots without room for everyone", () => {
   const got = orderSlots([{ time: "07:40", free: 2 }, { time: "07:48", free: 4 }, { time: "07:56", free: null }], "07:20", "12:00", 3);
   assert.deepEqual(got.map((s) => s.time), ["07:48", "07:56"]);
 });
+
+test("always-in player is booked every day, ticked or not", () => {
+  const config = { players: { dan: { name: "Daniel Maloney", isBookingAccount: true, alwaysIn: true }, mark: { name: "Mark Armstrong" }, hugh: { name: "Hugh Crowther" } } };
+  assert.deepEqual(playersFor("sun", { sun: { hugh: true } }, config), ["dan", "hugh"]);
+  assert.deepEqual(playersFor("sat", {}, config), ["dan"]);
+});

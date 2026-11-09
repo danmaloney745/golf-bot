@@ -8,7 +8,8 @@ import { getWeekends, setTick } from "../lib/store.mjs";
 
 const config = JSON.parse(readFileSync(new URL("../config.json", import.meta.url), "utf8"));
 const PAGE = readFileSync(new URL("./page.html", import.meta.url), "utf8")
-  .replaceAll("__PLAYERS__", JSON.stringify(Object.entries(config.players).map(([k, p]) => [k, p.name])))
+  .replaceAll("__PLAYERS__", JSON.stringify(Object.entries(config.players).filter(([, p]) => !p.alwaysIn).map(([k, p]) => [k, p.name])))
+  .replaceAll("__ALWAYS__", JSON.stringify(Object.values(config.players).filter((p) => p.alwaysIn).map((p) => p.name)))
   .replaceAll("__OPENS_AT__", config.opensAt)
   .replaceAll("__EARLIEST__", config.earliestTeeTime);
 
@@ -44,7 +45,7 @@ export async function handler(event) {
     try { body = JSON.parse(event.isBase64Encoded ? Buffer.from(event.body, "base64").toString() : event.body || "{}"); }
     catch { return json(400, { error: "Body must be JSON" }); }
     const { weekend, day, player, value } = body;
-    if (!DATE.test(weekend || "") || !["sat", "sun"].includes(day) || !config.players[player] || typeof value !== "boolean") {
+    if (!DATE.test(weekend || "") || !["sat", "sun"].includes(day) || !config.players[player] || config.players[player].alwaysIn || typeof value !== "boolean") {
       return json(400, { error: "Expected { weekend: YYYY-MM-DD, day: sat|sun, player, value: boolean }" });
     }
     await setTick(weekend, day, player, value);

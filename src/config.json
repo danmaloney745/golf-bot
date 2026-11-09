@@ -9,8 +9,16 @@
   "latestTeeTime": "09:00",
   "retryWindowSeconds": 180,
   "players": {
-    "dan": { "name": "Daniel Maloney", "isBookingAccount": true },
-    "mark": { "name": "Mark Armstrong" },
-    "hugh": { "name": "Hugh Crowther" }
+    "dan": {
+      "name": "Daniel Maloney",
+      "isBookingAccount": true,
+      "alwaysIn": true
+    },
+    "mark": {
+      "name": "Mark Armstrong"
+    },
+    "hugh": {
+      "name": "Hugh Crowther"
+    }
   }
 }

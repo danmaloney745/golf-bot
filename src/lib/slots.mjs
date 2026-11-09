@@ -12,10 +12,10 @@ export function orderSlots(candidates, earliest, latest, needed = 1) {
     .filter((c) => (seen.has(c.time) ? false : seen.add(c.time)));
 }
 
-/** Who to book for a given day: opted-in players, booking account first. */
+/** Who to book for a given day: always-in players plus whoever ticked it, booking account first. */
 export function playersFor(day, availability, config) {
   const ticked = availability[day] || {};
-  const keys = Object.keys(config.players).filter((k) => ticked[k]);
+  const keys = Object.keys(config.players).filter((k) => config.players[k].alwaysIn || ticked[k]);
   return keys.sort((a, b) => (config.players[b].isBookingAccount ? 1 : 0) - (config.players[a].isBookingAccount ? 1 : 0));
 }
 

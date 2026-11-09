@@ -58,7 +58,7 @@ tfoot tr.result td{background:var(--card);color:var(--ink)}
   <header>
     <div class="eyebrow">Craddockstown · weekend tee time</div>
     <h1>Who's playing?</h1>
-    <p>Tick the days you can play. The bot books for whoever's ticked when bookings open on Monday at <span class="mono">__OPENS_AT__</span>, starting from <span class="mono">__EARLIEST__</span>.</p>
+    <p>Tick the days you can play. <span id="always"></span> is entered in Saturday's and Sunday's competitions every week, and the bot adds whoever's ticked when entry opens on Monday at <span class="mono">__OPENS_AT__</span>, from <span class="mono">__EARLIEST__</span>.</p>
   </header>
   <div id="cards"></div>
   <p class="status" id="status" role="status">Loading availability…</p>
@@ -66,6 +66,7 @@ tfoot tr.result td{background:var(--card);color:var(--ink)}
 </div>
 <script>
 const PLAYERS=__PLAYERS__;
+const ALWAYS=__ALWAYS__;
 const OPENS="__OPENS_AT__".split(":").map(Number);
 const KEY=new URLSearchParams(location.search).get("k")||"";
 const statusEl=document.getElementById("status"), cardsEl=document.getElementById("cards");
@@ -93,7 +94,7 @@ function render(){
   weekends().forEach((w,i)=>{
     const id=iso(w.sat), doc=state[id]||{};
     const ticked=(d,k)=>!!(doc[d]&&doc[d][k]);
-    const count=d=>PLAYERS.filter(([k])=>ticked(d,k)).length;
+    const count=d=>ALWAYS.length+PLAYERS.filter(([k])=>ticked(d,k)).length;
     const label=c=>c===0?"No booking":c===1?"1 player":c+"-ball";
     const r=doc.result;
     const resultCell=d=>r?(r[d]?(String(r[d]).endsWith("?")?"Check BRS "+String(r[d]).slice(0,-1):"Booked "+r[d]):(count(d)?"Not booked":"—")):"";
@@ -148,6 +149,7 @@ cardsEl.addEventListener("change",async ev=>{
   finally{ busy.delete(w); render(); }
 });
 
+document.getElementById("always").textContent=ALWAYS.join(" and ")||"Nobody";
 render(); load(); setInterval(()=>{ if(!document.hidden && !busy.size) load(); },20000);
 </script>
 </body>

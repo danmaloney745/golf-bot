@@ -35,3 +35,10 @@ test("rejects bad ticks", async () => {
   assert.equal((await req("POST", "/api/tick", { k: "fore" }, { weekend: "2026-11-14", day: "fri", player: "hugh", value: true })).statusCode, 400);
   assert.equal((await req("POST", "/api/tick", { k: "fore" }, { weekend: "2026-11-14", day: "sat", player: "tiger", value: true })).statusCode, 400);
 });
+
+test("Dan's box isn't on the page and can't be ticked", async () => {
+  const page = (await req("GET", "/", { k: "fore" })).body;
+  assert.doesNotMatch(page, /\["dan","Daniel Maloney"\]/);
+  assert.match(page, /const ALWAYS=\["Daniel Maloney"\]/);
+  assert.equal((await req("POST", "/api/tick", { k: "fore" }, { weekend: "2026-11-14", day: "sat", player: "dan", value: false })).statusCode, 400);
+});
