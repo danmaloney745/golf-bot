@@ -100,19 +100,28 @@ export class SubmittedError extends Error {}
 
 /**
  * Book one day, earliest slot from config.earliestTeeTime, falling back slot by slot.
- * Returns the time booked, "HH:MM?" if submitted but unconfirmed (check BRS), or null.
+ * If entry is open but no slot has room for the whole group, the lowest-priority partner
+ * (last in config.players) is dropped, down to a two-ball: BRS only allows one booking per
+ * hour per account, so a split across two times isn't possible.
+ * Returns { time, unconfirmed, dropped }: time is null if nothing was entered.
  */
 export async function bookDay(page, config, dayIso, partners, { dryRun, snap, log }) {
   const deadline = Date.now() + config.retryWindowSeconds * 1000;
   const tried = new Set();
+  const group = [...partners], dropped = [];
+  const fits = (open) => orderSlots(open, config.earliestTeeTime, config.latestTeeTime, group.length + 1).filter((s) => !tried.has(s.time));
   // One load at opening time; if entry isn't showing yet, reload every 3s, at most 8 times.
   let emptyLoads = 0;
   while (Date.now() < deadline) {
     await page.goto(teeSheetUrl(config, dayIso), { waitUntil: "domcontentloaded" });
     await page.locator(".size-marker").first().waitFor({ timeout: 10000 }).catch(() => {});
-    const slots = orderSlots(await findSlots(page), config.earliestTeeTime, config.latestTeeTime, partners.length + 1)
-      .filter((s) => !config.competitionsOnly || s.comp)
-      .filter((s) => !tried.has(s.time));
+    const open = (await findSlots(page)).filter((s) => (!config.competitionsOnly || s.comp) && !tried.has(s.time));
+    let slots = fits(open);
+    while (!slots.length && open.length && group.length > 1) {
+      dropped.unshift(group.pop());
+      log(`${dayIso}: no slot with room for everyone; entering ${group.length + 1} without ${dropped[0]}`);
+      slots = fits(open);
+    }
     if (!slots.length) {
       if (++emptyLoads >= 8) { log(`${dayIso}: no enterable slots after ${emptyLoads} loads`); await snap(`${dayIso}-no-slots`); break; }
       await sleep(3000);
@@ -121,14 +130,14 @@ export async function bookDay(page, config, dayIso, partners, { dryRun, snap, lo
     const slot = slots[0];
     tried.add(slot.time);
     try {
-      if (await tryBook(page, dayIso, slot, partners, { dryRun, snap })) return slot.time;
+      if (await tryBook(page, dayIso, slot, group, { dryRun, snap })) return { time: slot.time, unconfirmed: false, dropped };
     } catch (e) {
       if (e instanceof SubmittedError) {
         log(`${dayIso} ${slot.time}: ${e.message}. Stopping this day so it can't double-book; check BRS.`);
-        return `${slot.time}?`;
+        return { time: slot.time, unconfirmed: true, dropped };
       }
       log(`${dayIso} ${slot.time} failed: ${e.message}. Trying next slot.`);
     }
   }
-  return null;
+  return { time: null, unconfirmed: false, dropped: [] };
 }

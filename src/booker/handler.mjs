@@ -94,9 +94,13 @@ export async function handler(event = {}) {
 
     if (!event.now) await sleep(opens - Date.now());
     const settled = await Promise.allSettled(jobs.map(run));
+    const record = (j, v) => {
+      result[j.day] = v.time ? (v.unconfirmed ? `${v.time}?` : v.time) : null;
+      result[`${j.day}Missing`] = v.time ? v.dropped : [];
+    };
     jobs.forEach((j, i) => {
       const s = settled[i];
-      if (s.status === "fulfilled") result[j.day] = s.value;
+      if (s.status === "fulfilled") record(j, s.value);
       else log(`[${j.day}] error: ${s.reason?.message || s.reason}`);
     });
 
@@ -104,10 +108,13 @@ export async function handler(event = {}) {
     if (jobs.length > 1) {
       for (const j of jobs.filter((j) => result[j.day] === null)) {
         log(`[${j.day}] retrying on its own`);
-        try { result[j.day] = await run(j); } catch (e) { log(`[${j.day}] retry error: ${e.message}`); }
+        try { record(j, await run(j)); } catch (e) { log(`[${j.day}] retry error: ${e.message}`); }
       }
     }
-    for (const j of jobs) log(`${j.day}: ${result[j.day] ? (result[j.day].endsWith("?") ? `submitted ${result[j.day]} but unconfirmed` : `booked ${result[j.day]}`) : "not booked"}`);
+    for (const j of jobs) {
+      log(`${j.day}: ${result[j.day] ? (result[j.day].endsWith("?") ? `submitted ${result[j.day]} but unconfirmed` : `booked ${result[j.day]}`) : "not booked"}`);
+      if (result[`${j.day}Missing`]?.length) log(`${j.day}: left out, needs to enter himself: ${result[`${j.day}Missing`].join(", ")}`);
+    }
     return result;
   } catch (e) {
     log(`ERROR ${e.message}`);
@@ -117,6 +124,6 @@ export async function handler(event = {}) {
   } finally {
     await browser.close().catch(() => {});
     await s3.send(new PutObjectCommand({ Bucket: process.env.RUNS_BUCKET, Key: `runs/${runId}/log.txt`, Body: lines.join("\n"), ContentType: "text/plain" })).catch(() => {});
-    if (mode !== "recon") await saveResult(weekend.sat, { runId, mode, sat: result.sat, sun: result.sun, error: result.error || null, at: new Date().toISOString() }).catch((e) => console.error("saveResult", e));
+    if (mode !== "recon") await saveResult(weekend.sat, { runId, mode, sat: result.sat, sun: result.sun, satMissing: result.satMissing || [], sunMissing: result.sunMissing || [], error: result.error || null, at: new Date().toISOString() }).catch((e) => console.error("saveResult", e));
   }
 }

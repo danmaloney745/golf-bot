@@ -47,6 +47,7 @@ td.name{font-weight:500}
 tfoot td{border-top:1px solid var(--line);background:var(--green-soft);color:var(--green);font-weight:600;font-size:.85rem}
 tfoot tr.result td{background:var(--card);color:var(--ink)}
 .note{font-size:.85rem;color:var(--muted);margin:0}
+.missing{margin:0;padding:10px 16px;border-top:1px solid var(--line);font-size:.85rem;background:var(--flag);color:var(--flag-ink)}
 .status{font-size:.85rem;color:var(--muted);min-height:1.3em;margin:0}
 .status.err{color:var(--err)}
 @media (prefers-reduced-motion:reduce){.tick{transition:none}}
@@ -111,7 +112,11 @@ function render(){
         </tr>`).join("")}</tbody>
         <tfoot><tr><td>Booking</td><td class="day">${label(count("sat"))}</td><td class="day">${label(count("sun"))}</td></tr>
         ${r?`<tr class="result"><td>Result</td><td class="day mono">${resultCell("sat")}</td><td class="day mono">${resultCell("sun")}</td></tr>`:""}</tfoot>
-      </table>`;
+      </table>
+      <p class="missing"></p>`;
+    const missing=["sat","sun"].filter(d=>r&&r[d+"Missing"]&&r[d+"Missing"].length)
+      .map(d=>`${d==="sat"?"Saturday":"Sunday"}: no slot had room for everyone, so ${r[d+"Missing"].join(" and ")} needs to enter himself.`);
+    const mEl=card.querySelector(".missing"); if(missing.length) mEl.textContent=missing.join(" "); else mEl.remove();
     card.querySelectorAll("td.name").forEach((td,j)=>{td.textContent=PLAYERS[j][1];});
     card.querySelectorAll(".tick").forEach(t=>{const n=PLAYERS.find(p=>p[0]===t.dataset.p)[1];t.setAttribute("aria-label",`${n} ${t.dataset.d==="sat"?"Saturday":"Sunday"}`);});
     cardsEl.appendChild(card);
