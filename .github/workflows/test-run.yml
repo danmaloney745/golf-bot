@@ -3,13 +3,27 @@ name: Test run
 # Runs the booking Lambda now and saves its screenshots to the `runs` branch.
 # recon:   log in, capture the tee sheet and booking form, book nothing
 # dry-run: pick slots and fill in players, but never press the final confirm
+# book:    a real booking; only allowed with a date, so it can't touch the weekend
 on:
   workflow_dispatch:
     inputs:
       mode:
         type: choice
-        options: [recon, dry-run]
+        options: [recon, dry-run, book]
         default: recon
+      date:
+        description: "One-off test date (YYYY-MM-DD); books with all three players. Blank = this weekend's ticks"
+        default: ""
+      from:
+        description: "Earliest tee time (HH:MM)"
+        default: ""
+      to:
+        description: "Latest tee time (HH:MM)"
+        default: ""
+      casual:
+        description: "Allow casual (non-competition) slots"
+        type: boolean
+        default: false
 
 concurrency:
   group: test-run
@@ -32,13 +46,24 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
       - name: Invoke booker
+        env:
+          MODE: ${{ inputs.mode }}
+          DATE: ${{ inputs.date }}
+          FROM: ${{ inputs.from }}
+          TO: ${{ inputs.to }}
+          CASUAL: ${{ inputs.casual }}
         run: |
           out() { aws cloudformation describe-stacks --stack-name "$STACK" --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }
           FN=$(out BookerFunctionName); BUCKET=$(out RunsBucketName)
           echo "BUCKET=$BUCKET" >> "$GITHUB_ENV"
+          if [ "$MODE" = "book" ] && [ -z "$DATE" ]; then echo "::error::Real bookings from a test run need a date"; exit 1; fi
+          PAYLOAD=$(jq -cn --arg mode "$MODE" --arg date "$DATE" --arg from "$FROM" --arg to "$TO" --argjson casual "$CASUAL" \
+            '{mode:$mode, now:true} + (if $date != "" then {date:$date, casual:$casual} else {} end)
+             + (if $from != "" then {from:$from} else {} end) + (if $to != "" then {to:$to} else {} end)')
+          echo "Payload: $PAYLOAD"
           aws lambda invoke --function-name "$FN" --cli-read-timeout 900 \
             --cli-binary-format raw-in-base64-out \
-            --payload '{"mode":"${{ inputs.mode }}","now":true}' result.json | tee invoke.json
+            --payload "$PAYLOAD" result.json | tee invoke.json
           cat result.json
           jq -r '.log[]? // empty' result.json >> "$GITHUB_STEP_SUMMARY" || true
           RUN=$(jq -r '.runId // empty' result.json)

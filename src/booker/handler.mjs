@@ -76,6 +76,19 @@ export async function handler(event = {}) {
       return result;
     }
 
+    // One-off test on any date: all three players, a custom time window, casual slots allowed if asked.
+    // Never reads or writes the availability page's data.
+    if (event.date) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(event.date)) throw new Error("date must be YYYY-MM-DD");
+      const testConfig = { ...config, earliestTeeTime: event.from || config.earliestTeeTime, latestTeeTime: event.to || config.latestTeeTime, competitionsOnly: !event.casual };
+      const partners = Object.values(config.players).filter((p) => !p.isBookingAccount).map((p) => p.name);
+      log(`Test ${mode} on ${event.date} ${testConfig.earliestTeeTime}-${testConfig.latestTeeTime}, ${event.casual ? "casual allowed" : "competitions only"}, with ${partners.join(", ")}`);
+      const v = await bookDay(page, testConfig, event.date, partners, { dryRun: mode === "dry-run", snap, log });
+      Object.assign(result, { test: event.date, ...v });
+      log(v.time ? `${mode === "dry-run" ? "Would book" : v.unconfirmed ? "Submitted but unconfirmed:" : "Booked"} ${v.time}${v.dropped.length ? ` without ${v.dropped.join(", ")}` : ""}` : "Nothing booked");
+      return result;
+    }
+
     if (!event.now) await sleep(opens - Date.now() - 30_000);
     const availability = (await getWeekend(weekend.sat)) || { sat: {}, sun: {} };
 
@@ -124,6 +137,6 @@ export async function handler(event = {}) {
   } finally {
     await browser.close().catch(() => {});
     await s3.send(new PutObjectCommand({ Bucket: process.env.RUNS_BUCKET, Key: `runs/${runId}/log.txt`, Body: lines.join("\n"), ContentType: "text/plain" })).catch(() => {});
-    if (mode !== "recon") await saveResult(weekend.sat, { runId, mode, sat: result.sat, sun: result.sun, satMissing: result.satMissing || [], sunMissing: result.sunMissing || [], error: result.error || null, at: new Date().toISOString() }).catch((e) => console.error("saveResult", e));
+    if (mode !== "recon" && !event.date) await saveResult(weekend.sat, { runId, mode, sat: result.sat, sun: result.sun, satMissing: result.satMissing || [], sunMissing: result.sunMissing || [], error: result.error || null, at: new Date().toISOString() }).catch((e) => console.error("saveResult", e));
   }
 }
