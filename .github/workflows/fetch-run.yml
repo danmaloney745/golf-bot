@@ -29,6 +29,8 @@ jobs:
           echo "BUCKET=$BUCKET" >> "$GITHUB_ENV"; echo "RUN=$RUN" >> "$GITHUB_ENV"
           echo "== Run $RUN"; aws s3 ls "s3://$BUCKET/runs/$RUN/"
           echo "== log.txt"; aws s3 cp "s3://$BUCKET/runs/$RUN/log.txt" - || echo "(no log.txt yet: run may still be going or crashed)"
+          TABLE=$(aws cloudformation describe-stack-resource --stack-name "$STACK" --logical-resource-id AvailabilityTable --query StackResourceDetail.PhysicalResourceId --output text)
+          echo "== Stored ticks"; aws dynamodb scan --table-name "$TABLE" --output json | jq -c '.Items[]'
           echo "== CloudWatch (last 40 min)"
           aws logs filter-log-events --log-group-name "/aws/lambda/$FN" --start-time $(( ($(date +%s) - 2400) * 1000 )) \
             --query 'events[].message' --output text | tr '\t' '\n' | tail -120
