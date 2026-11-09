@@ -1,0 +1,43 @@
+name: Fetch latest run
+
+# Copies the most recent booking run's log and screenshots from S3 to the `runs` branch,
+# and prints the Lambda's recent CloudWatch log.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  AWS_REGION: eu-west-1
+  STACK: golf-bot
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+      - name: Find the run
+        run: |
+          out() { aws cloudformation describe-stacks --stack-name "$STACK" --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }
+          FN=$(out BookerFunctionName); BUCKET=$(out RunsBucketName)
+          RUN=$(aws s3 ls "s3://$BUCKET/runs/" | awk '{print $2}' | tr -d / | grep -- '-book$' | sort | tail -1)
+          echo "BUCKET=$BUCKET" >> "$GITHUB_ENV"; echo "RUN=$RUN" >> "$GITHUB_ENV"
+          echo "== Run $RUN"; aws s3 ls "s3://$BUCKET/runs/$RUN/"
+          echo "== log.txt"; aws s3 cp "s3://$BUCKET/runs/$RUN/log.txt" - || echo "(no log.txt yet: run may still be going or crashed)"
+          echo "== CloudWatch (last 40 min)"
+          aws logs filter-log-events --log-group-name "/aws/lambda/$FN" --start-time $(( ($(date +%s) - 2400) * 1000 )) \
+            --query 'events[].message' --output text | tr '\t' '\n' | tail -120
+      - name: Save to the runs branch
+        run: |
+          [ -n "$RUN" ] || exit 0
+          git init -q runs && cd runs
+          git remote add origin "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}"
+          git fetch -q --depth 1 origin runs && git checkout -q runs || git checkout -q --orphan runs
+          aws s3 cp "s3://$BUCKET/runs/$RUN/" "$RUN/" --recursive --only-show-errors
+          git add -A
+          git -c user.name="golf-bot" -c user.email="golf-bot@users.noreply.github.com" commit -q -m "Fetched run $RUN" && git push -q origin runs || true
