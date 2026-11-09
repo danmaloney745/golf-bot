@@ -1,0 +1,5 @@
+2026-11-09T11:45:00.160Z Mode book, target weekend 2026-11-14/2026-11-15, opens 2026-11-09 19:16
+2026-11-09T11:45:05.329Z Logged in
+2026-11-09T11:45:05.330Z Test book on 2026-11-13 08:04-08:48, casual allowed, with Mark Armstrong, Hugh Crowther
+2026-11-09T11:45:10.988Z 2026-11-13 08:04: already on it: Maloney, Daniel; adding: Mark Armstrong, Hugh Crowther
+2026-11-09T11:45:18.457Z Booked 08:04
