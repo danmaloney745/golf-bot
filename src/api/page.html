@@ -95,7 +95,7 @@ function render(){
     const count=d=>PLAYERS.filter(([k])=>ticked(d,k)).length;
     const label=c=>c===0?"No booking":c===1?"1 player":c+"-ball";
     const r=doc.result;
-    const resultCell=d=>r?(r[d]?"Booked "+r[d]:(count(d)?"Not booked":"—")):"";
+    const resultCell=d=>r?(r[d]?(String(r[d]).endsWith("?")?"Check BRS "+String(r[d]).slice(0,-1):"Booked "+r[d]):(count(d)?"Not booked":"—")):"";
     const card=document.createElement("section");
     card.className="card";
     card.innerHTML=`

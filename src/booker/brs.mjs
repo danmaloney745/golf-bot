@@ -85,14 +85,21 @@ async function tryBook(page, dayIso, slot, partners, { dryRun, snap }) {
   for (let i = 0; i < partners.length; i++) await pickPlayer(page, i + 2, partners[i]);
   if (dryRun) { await snap("dry-run-ready"); return true; }
   await page.getByRole("button", { name: /confirm|create booking|book now|complete/i }).first().click();
+  // From here the entry may have gone through, so never move on to another slot.
   await page.waitForLoadState("networkidle").catch(() => {});
   await snap(`${dayIso}-${slot.time.replace(":", "")}-result`);
-  const body = await page.locator("body").innerText();
-  if (/booking (confirmed|complete|successful|made)|successfully booked|your booking/i.test(body)) return true;
-  throw new Error("No confirmation message after submitting");
+  const body = await page.locator("body").innerText().catch(() => "");
+  if (/booking (confirmed|complete|successful|made)|successfully (booked|entered)|your booking|entry (confirmed|received)/i.test(body)) return true;
+  throw new SubmittedError("Submitted, but no confirmation message seen");
 }
 
-/** Book one day, earliest slot from config.earliestTeeTime, falling back slot by slot. Returns the time booked or null. */
+/** Thrown once the final button has been pressed: the entry may exist, so trying another slot could double-book. */
+export class SubmittedError extends Error {}
+
+/**
+ * Book one day, earliest slot from config.earliestTeeTime, falling back slot by slot.
+ * Returns the time booked, "HH:MM?" if submitted but unconfirmed (check BRS), or null.
+ */
 export async function bookDay(page, config, dayIso, partners, { dryRun, snap, log }) {
   const deadline = Date.now() + config.retryWindowSeconds * 1000;
   const tried = new Set();
@@ -113,6 +120,10 @@ export async function bookDay(page, config, dayIso, partners, { dryRun, snap, lo
     try {
       if (await tryBook(page, dayIso, slot, partners, { dryRun, snap })) return slot.time;
     } catch (e) {
+      if (e instanceof SubmittedError) {
+        log(`${dayIso} ${slot.time}: ${e.message}. Stopping this day so it can't double-book; check BRS.`);
+        return `${slot.time}?`;
+      }
       log(`${dayIso} ${slot.time} failed: ${e.message}. Trying next slot.`);
     }
   }

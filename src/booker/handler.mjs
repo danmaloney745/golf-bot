@@ -36,19 +36,22 @@ export async function handler(event = {}) {
   // Chromium's bundled system libraries are unpacked under /tmp; make sure the child process finds them.
   process.env.LD_LIBRARY_PATH = ["/tmp/al2023/lib", "/tmp/al2/lib", "/tmp", process.env.LD_LIBRARY_PATH].filter(Boolean).join(":");
   const browser = await pw.launch({ executablePath, args: chromium.args, headless: true });
-  const page = await (await browser.newContext({ timezoneId: "Europe/Dublin", viewport: { width: 1280, height: 900 } })).newPage();
-  page.setDefaultTimeout(15000);
+  // One context = one logged-in session; each tab opened in it shares the login cookies.
+  const context = await browser.newContext({ timezoneId: "Europe/Dublin", viewport: { width: 1280, height: 900 } });
+  const newTab = async () => { const p = await context.newPage(); p.setDefaultTimeout(15000); return p; };
+  const page = await newTab();
 
   let shot = 0;
-  const snap = async (label) => {
+  const snapFor = (pg) => async (label) => {
     const key = `runs/${runId}/${String(++shot).padStart(2, "0")}-${label}`;
-    const png = await page.screenshot({ fullPage: true }).catch(() => null);
-    const html = await page.content().catch(() => "");
+    const png = await pg.screenshot({ fullPage: true }).catch(() => null);
+    const html = await pg.content().catch(() => "");
     await Promise.all([
       png && s3.send(new PutObjectCommand({ Bucket: process.env.RUNS_BUCKET, Key: `${key}.png`, Body: png, ContentType: "image/png" })),
       s3.send(new PutObjectCommand({ Bucket: process.env.RUNS_BUCKET, Key: `${key}.html`, Body: html, ContentType: "text/html" })),
-    ]);
+    ]).catch(() => {});
   };
+  const snap = snapFor(page);
 
   const result = { runId, mode, weekendOf: weekend.sat, sat: null, sun: null, log: lines };
   try {
@@ -75,17 +78,36 @@ export async function handler(event = {}) {
 
     if (!event.now) await sleep(opens - Date.now() - 30_000);
     const availability = (await getWeekend(weekend.sat)) || { sat: {}, sun: {} };
-    if (!event.now) await sleep(opens - Date.now());
 
+    // Work out each day's group, and give each day its own tab so neither waits on the other.
+    const jobs = [];
     for (const day of ["sat", "sun"]) {
       const keys = playersFor(day, availability, config);
       if (!keys.length) { log(`${day}: nobody ticked`); continue; }
       if (!keys.some((k) => config.players[k].isBookingAccount)) { log(`${day}: Dan not ticked, skipping (bookings use his account)`); continue; }
       const partners = keys.filter((k) => !config.players[k].isBookingAccount).map((k) => config.players[k].name);
-      log(`${day}: booking ${keys.length} player(s)`);
-      result[day] = await bookDay(page, config, weekend[day], partners, { dryRun: mode === "dry-run", snap, log });
-      log(`${day}: ${result[day] ? `booked ${result[day]}` : "not booked"}`);
+      const tab = jobs.length === 0 ? page : await newTab();
+      jobs.push({ day, partners, tab, snap: snapFor(tab) });
+      log(`${day}: ${keys.length} player(s)`);
     }
+    const run = (j) => bookDay(j.tab, config, weekend[j.day], j.partners, { dryRun: mode === "dry-run", snap: j.snap, log: (m) => log(`[${j.day}] ${m}`) });
+
+    if (!event.now) await sleep(opens - Date.now());
+    const settled = await Promise.allSettled(jobs.map(run));
+    jobs.forEach((j, i) => {
+      const s = settled[i];
+      if (s.status === "fulfilled") result[j.day] = s.value;
+      else log(`[${j.day}] error: ${s.reason?.message || s.reason}`);
+    });
+
+    // If BRS only lets one entry be in progress per account, the parallel attempt can lose. Retry those days one at a time.
+    if (jobs.length > 1) {
+      for (const j of jobs.filter((j) => result[j.day] === null)) {
+        log(`[${j.day}] retrying on its own`);
+        try { result[j.day] = await run(j); } catch (e) { log(`[${j.day}] retry error: ${e.message}`); }
+      }
+    }
+    for (const j of jobs) log(`${j.day}: ${result[j.day] ? (result[j.day].endsWith("?") ? `submitted ${result[j.day]} but unconfirmed` : `booked ${result[j.day]}`) : "not booked"}`);
     return result;
   } catch (e) {
     log(`ERROR ${e.message}`);
