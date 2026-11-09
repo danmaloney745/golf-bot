@@ -4,6 +4,7 @@
   "courseId": 1,
   "teeSheetPath": "/{club}/tee-sheet/{courseId}/{yyyy}/{mm}/{dd}",
   "opensAt": "19:16",
+  "competitionsOnly": true,
   "earliestTeeTime": "07:20",
   "latestTeeTime": "23:59",
   "retryWindowSeconds": 180,

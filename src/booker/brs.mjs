@@ -52,7 +52,9 @@ export async function findSlots(page) {
         const spaces = [...row.querySelectorAll("td div.flex.items-center")].filter(visible);
         if (spaces.length) free = spaces.filter((s) => !(s.textContent || "").trim()).length;
       }
-      if (time) out.push({ time, index: i, free });
+      // Competition rows carry "Members Competition"; casual rows only show players' names.
+      const comp = /competition/i.test(row?.textContent || "");
+      if (time) out.push({ time, index: i, free, comp });
     });
     return out;
   });
@@ -109,6 +111,7 @@ export async function bookDay(page, config, dayIso, partners, { dryRun, snap, lo
     await page.goto(teeSheetUrl(config, dayIso), { waitUntil: "domcontentloaded" });
     await page.locator(".size-marker").first().waitFor({ timeout: 10000 }).catch(() => {});
     const slots = orderSlots(await findSlots(page), config.earliestTeeTime, config.latestTeeTime, partners.length + 1)
+      .filter((s) => !config.competitionsOnly || s.comp)
       .filter((s) => !tried.has(s.time));
     if (!slots.length) {
       if (++emptyLoads >= 8) { log(`${dayIso}: no enterable slots after ${emptyLoads} loads`); await snap(`${dayIso}-no-slots`); break; }
