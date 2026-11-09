@@ -80,7 +80,7 @@ export async function handler(event = {}) {
     // Never reads or writes the availability page's data.
     if (event.date) {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(event.date)) throw new Error("date must be YYYY-MM-DD");
-      const testConfig = { ...config, earliestTeeTime: event.from || config.earliestTeeTime, latestTeeTime: event.to || config.latestTeeTime, competitionsOnly: !event.casual };
+      const testConfig = { ...config, earliestTeeTime: event.from || config.earliestTeeTime, latestTeeTime: event.to || config.latestTeeTime, competitionsOnly: !event.casual, emptyOnly: event.emptyOnly !== false };
       const partners = Object.values(config.players).filter((p) => !p.isBookingAccount).map((p) => p.name);
       log(`Test ${mode} on ${event.date} ${testConfig.earliestTeeTime}-${testConfig.latestTeeTime}, ${event.casual ? "casual allowed" : "competitions only"}, with ${partners.join(", ")}`);
       const v = await bookDay(page, testConfig, event.date, partners, { dryRun: mode === "dry-run", snap, log });

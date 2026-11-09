@@ -47,46 +47,57 @@ export async function findSlots(page) {
         const m = (node.innerText || "").match(TIME);
         if (m) time = `${m[1]}:${m[2]}`;
       }
-      let free = null;
+      let free = null, taken = null;
       if (row) {
-        const spaces = [...row.querySelectorAll("td div.flex.items-center")].filter(visible);
-        if (spaces.length) free = spaces.filter((s) => !(s.textContent || "").trim()).length;
+        const spaces = [...row.querySelectorAll("td div.flex.items-center")].filter(visible).map((s) => (s.textContent || "").trim());
+        if (spaces.length) {
+          free = spaces.filter((t) => !t).length;
+          taken = spaces.filter((t) => t && t.toLowerCase() !== "x").length; // "x" = space blocked, not a person
+        }
       }
       // Competition rows carry "Members Competition"; casual rows only show players' names.
       const comp = /competition/i.test(row?.textContent || "");
-      if (time) out.push({ time, index: i, free, comp });
+      if (time) out.push({ time, index: i, free, taken, comp });
     });
     return out;
   });
 }
 
-async function pickPlayer(page, slotNumber, fullName) {
-  const field = page.getByLabel(new RegExp(`player\\s*${slotNumber}`, "i")).first();
-  if (!(await field.count())) throw new Error(`No Player ${slotNumber} field on the booking form`);
-  if ((await field.evaluate((el) => el.tagName)) === "SELECT") {
-    const label = (await field.locator("option").allTextContents()).find((o) => nameMatches(o, fullName));
-    if (!label) throw new Error(`${fullName} not in the Player ${slotNumber} list`);
-    await field.selectOption({ label });
-    return;
+/**
+ * Fill the booking form. Each space is <select id="member_booking_form_player_N">; spaces already
+ * taken (by you, or by someone else on a part-booked slot) are disabled with a member selected.
+ * Everyone in `names` who isn't already on the booking goes into the empty spaces, in order.
+ */
+async function fillPlayers(page, names) {
+  const fields = page.locator('select[id^="member_booking_form_player_"]');
+  await fields.first().waitFor({ state: "attached", timeout: 10000 });
+  const spaces = [];
+  for (let i = 0; i < (await fields.count()); i++) {
+    const f = fields.nth(i);
+    const [disabled, current] = await f.evaluate((el) => [el.disabled, el.value ? (el.selectedOptions[0]?.textContent || "").trim() : ""]);
+    spaces.push({ f, disabled, current });
   }
-  const surname = fullName.split(" ").pop();
-  await field.click();
-  await field.fill(surname);
-  const options = page.getByRole("option").filter({ hasText: new RegExp(surname, "i") });
-  await options.first().waitFor({ timeout: 5000 });
-  for (const o of await options.all()) {
-    if (nameMatches(await o.innerText(), fullName)) { await o.click(); return; }
+  const onIt = spaces.map((s) => s.current).filter(Boolean);
+  const todo = names.filter((n) => !onIt.some((c) => nameMatches(c, n)));
+  const empty = spaces.filter((s) => !s.disabled && !s.current);
+  if (empty.length < todo.length) throw new Error(`Only ${empty.length} free space(s) for ${todo.join(", ")}`);
+  for (let i = 0; i < todo.length; i++) {
+    const label = (await empty[i].f.locator("option").allTextContents()).find((o) => nameMatches(o, todo[i]));
+    if (!label) throw new Error(`${todo[i]} isn't in the player list`);
+    await empty[i].f.selectOption({ label: label.trim() }, { force: true });
   }
-  throw new Error(`${fullName} not offered for Player ${slotNumber}`);
+  return { already: onIt, added: todo };
 }
 
-async function tryBook(page, dayIso, slot, partners, { dryRun, snap }) {
+async function tryBook(page, dayIso, slot, names, { dryRun, snap, log }) {
   await page.locator(`[data-bot-book="${slot.index}"]`).click();
   await page.waitForLoadState("domcontentloaded");
   await snap(`${dayIso}-${slot.time.replace(":", "")}-form`);
-  for (let i = 0; i < partners.length; i++) await pickPlayer(page, i + 2, partners[i]);
+  const { already, added } = await fillPlayers(page, names);
+  log(`${dayIso} ${slot.time}: already on it: ${already.join(", ") || "nobody"}; adding: ${added.join(", ") || "nobody"}`);
   if (dryRun) { await snap("dry-run-ready"); return true; }
-  await page.getByRole("button", { name: /confirm|create booking|book now|complete/i }).first().click();
+  // BRS labels the final button "Update Booking"; the others are fallbacks.
+  await page.getByRole("button", { name: /update booking|confirm|create booking|save booking|complete booking/i }).first().click({ timeout: 5000 });
   // From here the entry may have gone through, so never move on to another slot.
   await page.waitForLoadState("networkidle").catch(() => {});
   await snap(`${dayIso}-${slot.time.replace(":", "")}-result`);
@@ -109,13 +120,14 @@ export async function bookDay(page, config, dayIso, partners, { dryRun, snap, lo
   const deadline = Date.now() + config.retryWindowSeconds * 1000;
   const tried = new Set();
   const group = [...partners], dropped = [];
+  const me = Object.values(config.players).find((p) => p.isBookingAccount).name;
   const fits = (open) => orderSlots(open, config.earliestTeeTime, config.latestTeeTime, group.length + 1).filter((s) => !tried.has(s.time));
   // One load at opening time; if entry isn't showing yet, reload every 3s, at most 8 times.
   let emptyLoads = 0;
   while (Date.now() < deadline) {
     await page.goto(teeSheetUrl(config, dayIso), { waitUntil: "domcontentloaded" });
     await page.locator(".size-marker").first().waitFor({ timeout: 10000 }).catch(() => {});
-    const open = (await findSlots(page)).filter((s) => (!config.competitionsOnly || s.comp) && !tried.has(s.time));
+    const open = (await findSlots(page)).filter((s) => (!config.competitionsOnly || s.comp) && (!config.emptyOnly || !s.taken) && !tried.has(s.time));
     let slots = fits(open);
     while (!slots.length && open.length && group.length > 1) {
       dropped.unshift(group.pop());
@@ -130,7 +142,7 @@ export async function bookDay(page, config, dayIso, partners, { dryRun, snap, lo
     const slot = slots[0];
     tried.add(slot.time);
     try {
-      if (await tryBook(page, dayIso, slot, group, { dryRun, snap })) return { time: slot.time, unconfirmed: false, dropped };
+      if (await tryBook(page, dayIso, slot, [me, ...group], { dryRun, snap, log })) return { time: slot.time, unconfirmed: false, dropped };
     } catch (e) {
       if (e instanceof SubmittedError) {
         log(`${dayIso} ${slot.time}: ${e.message}. Stopping this day so it can't double-book; check BRS.`);
