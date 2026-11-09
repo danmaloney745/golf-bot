@@ -1,0 +1,4 @@
+2026-11-09T19:10:19.879Z Mode book, target weekend 2026-11-14/2026-11-15, opens 2026-11-09 19:16
+2026-11-09T19:12:05.240Z Logged in
+2026-11-09T19:15:30.031Z sat: Dan not ticked, skipping (bookings use his account)
+2026-11-09T19:15:30.031Z sun: Dan not ticked, skipping (bookings use his account)
