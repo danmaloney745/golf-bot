@@ -8,7 +8,7 @@ import { getWeekends, setTick } from "../lib/store.mjs";
 
 const config = JSON.parse(readFileSync(new URL("../config.json", import.meta.url), "utf8"));
 const PAGE = readFileSync(new URL("./page.html", import.meta.url), "utf8")
-  .replaceAll("__PLAYERS__", JSON.stringify(Object.entries(config.players).map(([k, p]) => [k, p.name])))
+  .replaceAll("__PLAYERS__", JSON.stringify(Object.entries(config.players).map(([k, p]) => [k, p.name, !!p.isBookingAccount])))
   .replaceAll("__OPENS_AT__", config.opensAt)
   .replaceAll("__EARLIEST__", config.earliestTeeTime);
 

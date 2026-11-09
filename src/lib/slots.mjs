@@ -12,10 +12,14 @@ export function orderSlots(candidates, earliest, latest, needed = 1) {
     .filter((c) => (seen.has(c.time) ? false : seen.add(c.time)));
 }
 
-/** Who to book for a given day: opted-in players, booking account first. */
+/**
+ * Who to book for a given day: whoever ticked it, booking account first. A day nobody ticks isn't booked.
+ * The booking account (Dan) is added to any day someone else ticks, even if he didn't: entries go through
+ * his account, and he removes himself in BRS if he can't play.
+ */
 export function playersFor(day, availability, config) {
   const ticked = availability[day] || {};
-  const keys = Object.keys(config.players).filter((k) => ticked[k]);
+  const keys = Object.keys(config.players).filter((k) => ticked[k] || (config.players[k].isBookingAccount && Object.values(ticked).some(Boolean)));
   return keys.sort((a, b) => (config.players[b].isBookingAccount ? 1 : 0) - (config.players[a].isBookingAccount ? 1 : 0));
 }
 

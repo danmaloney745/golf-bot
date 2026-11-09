@@ -33,3 +33,11 @@ test("skips slots without room for everyone", () => {
   const got = orderSlots([{ time: "07:40", free: 2 }, { time: "07:48", free: 4 }, { time: "07:56", free: null }], "07:20", "12:00", 3);
   assert.deepEqual(got.map((s) => s.time), ["07:48", "07:56"]);
 });
+
+test("Dan joins any day someone ticks; days nobody ticks aren't booked", () => {
+  const config = { players: { dan: { name: "Daniel Maloney", isBookingAccount: true }, mark: { name: "Mark Armstrong" }, hugh: { name: "Hugh Crowther" } } };
+  assert.deepEqual(playersFor("sat", { sat: { mark: true, hugh: true, dan: false } }, config), ["dan", "mark", "hugh"]);
+  assert.deepEqual(playersFor("sun", { sun: { dan: true } }, config), ["dan"]);
+  assert.deepEqual(playersFor("sun", { sun: { dan: false, mark: false } }, config), []);
+  assert.deepEqual(playersFor("sat", {}, config), []);
+});
