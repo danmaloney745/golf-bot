@@ -5,12 +5,20 @@
   "teeSheetPath": "/{club}/tee-sheet/{courseId}/{yyyy}/{mm}/{dd}",
   "opensAt": "19:16",
   "competitionsOnly": true,
-  "earliestTeeTime": "08:04",
+  "earliestTeeTime": "07:00",
   "latestTeeTime": "09:00",
   "retryWindowSeconds": 180,
   "players": {
-    "dan": { "name": "Daniel Maloney", "isBookingAccount": true },
-    "mark": { "name": "Mark Armstrong" },
-    "hugh": { "name": "Hugh Crowther" }
-  }
+    "dan": {
+      "name": "Daniel Maloney",
+      "isBookingAccount": true
+    },
+    "mark": {
+      "name": "Mark Armstrong"
+    },
+    "hugh": {
+      "name": "Hugh Crowther"
+    }
+  },
+  "skipFirstCompetitionSlot": true
 }

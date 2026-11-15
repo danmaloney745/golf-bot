@@ -8,7 +8,7 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getWeekend, saveResult } from "../lib/store.mjs";
 import { targetWeekend, dublinInstant, sleep } from "../lib/time.mjs";
 import { playersFor } from "../lib/slots.mjs";
-import { login, bookDay, findSlots, teeSheetUrl } from "./brs.mjs";
+import { login, bookDay, findSlots, firstCompetitionTime, teeSheetUrl } from "./brs.mjs";
 
 const config = JSON.parse(readFileSync(new URL("../config.json", import.meta.url), "utf8"));
 const ssm = new SSMClient({});
@@ -66,6 +66,7 @@ export async function handler(event = {}) {
         await page.goto(teeSheetUrl(config, day), { waitUntil: "domcontentloaded" });
         await snap(`tee-sheet-${day}`);
         const slots = await findSlots(page);
+        log(`${day}: first competition slot ${await firstCompetitionTime(page)}`);
         log(`${day}: book/enter buttons found: ${JSON.stringify(slots.slice(0, 10))}${slots.length > 10 ? ` (+${slots.length - 10} more)` : ""}`);
         if (event.click && slots.length) {
           await page.locator(`[data-bot-book="${slots[0].index}"]`).click();

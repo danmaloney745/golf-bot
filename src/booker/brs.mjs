@@ -1,6 +1,6 @@
 // Browser steps against the BRS member site. Selectors are best guesses until a recon run confirms them.
 import { orderSlots, nameMatches } from "../lib/slots.mjs";
-import { sleep } from "../lib/time.mjs";
+import { sleep, toMinutes } from "../lib/time.mjs";
 
 export function teeSheetUrl(config, dayIso) {
   const [yyyy, mm, dd] = dayIso.split("-");
@@ -29,6 +29,22 @@ export async function login(page, config, { user, pass }, snap) {
  * player spaces as div.flex.items-center cells (a name or "x" when taken, empty when free).
  * `free` is null when the row's spaces can't be read, so the caller doesn't skip it on a guess.
  */
+/**
+ * The competition's first tee time on the sheet, whether or not entry is open yet:
+ * the earliest row that says "Competition" and has a time marker. null if none.
+ */
+export async function firstCompetitionTime(page) {
+  return page.evaluate((what) => {
+    if (what !== "firstComp") return null;
+    const TIME = /\b([01]\d|2[0-3])[:.]([0-5]\d)\b/;
+    const times = [...document.querySelectorAll("tr")]
+      .filter((r) => /competition/i.test(r.textContent || ""))
+      .map((r) => (r.querySelector(".size-marker")?.textContent || "").match(TIME))
+      .filter(Boolean).map((m) => `${m[1]}:${m[2]}`).sort();
+    return times[0] || null;
+  }, "firstComp");
+}
+
 export async function findSlots(page) {
   return page.evaluate(() => {
     const out = [];
@@ -123,11 +139,15 @@ export async function bookDay(page, config, dayIso, partners, { dryRun, snap, lo
   const me = Object.values(config.players).find((p) => p.isBookingAccount).name;
   const fits = (open) => orderSlots(open, config.earliestTeeTime, config.latestTeeTime, group.length + 1).filter((s) => !tried.has(s.time));
   // One load at opening time; if entry isn't showing yet, reload every 3s, at most 8 times.
-  let emptyLoads = 0;
+  let emptyLoads = 0, loggedFirst = false;
   while (Date.now() < deadline) {
     await page.goto(teeSheetUrl(config, dayIso), { waitUntil: "domcontentloaded" });
     await page.locator(".size-marker").first().waitFor({ timeout: 10000 }).catch(() => {});
-    const open = (await findSlots(page)).filter((s) => (!config.competitionsOnly || s.comp) && (!config.emptyOnly || !s.taken) && !tried.has(s.time));
+    // Skip the competition's first tee time: everyone goes for it, so aim for the one after.
+    const firstComp = config.skipFirstCompetitionSlot ? await firstCompetitionTime(page) : null;
+    if (firstComp && !loggedFirst) { log(`${dayIso}: first competition slot is ${firstComp}; aiming for the next one`); loggedFirst = true; }
+    const open = (await findSlots(page)).filter((s) => (!config.competitionsOnly || s.comp) && (!config.emptyOnly || !s.taken)
+      && (!firstComp || toMinutes(s.time) > toMinutes(firstComp)) && !tried.has(s.time));
     let slots = fits(open);
     while (!slots.length && open.length && group.length > 1) {
       dropped.unshift(group.pop());

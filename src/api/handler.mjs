@@ -10,7 +10,8 @@ const config = JSON.parse(readFileSync(new URL("../config.json", import.meta.url
 const PAGE = readFileSync(new URL("./page.html", import.meta.url), "utf8")
   .replaceAll("__PLAYERS__", JSON.stringify(Object.entries(config.players).map(([k, p]) => [k, p.name, !!p.isBookingAccount])))
   .replaceAll("__OPENS_AT__", config.opensAt)
-  .replaceAll("__EARLIEST__", config.earliestTeeTime);
+  .replaceAll("__EARLIEST__", config.earliestTeeTime)
+  .replaceAll("__LATEST__", config.latestTeeTime);
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 const json = (statusCode, body) => ({ statusCode, headers: { "content-type": "application/json", "cache-control": "no-store" }, body: JSON.stringify(body) });
