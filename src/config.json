@@ -7,7 +7,7 @@
   "competitionsOnly": true,
   "earliestTeeTime": "07:00",
   "latestTeeTime": "09:00",
-  "retryWindowSeconds": 180,
+  "retryWindowSeconds": 300,
   "players": {
     "dan": {
       "name": "Daniel Maloney",
@@ -20,5 +20,6 @@
       "name": "Hugh Crowther"
     }
   },
-  "skipFirstCompetitionSlot": true
+  "skipFirstCompetitionSlot": true,
+  "twoBallAfterSeconds": 60
 }
