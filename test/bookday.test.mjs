@@ -11,9 +11,9 @@ function feed(rows, firstComp) {
     times[r.time] = {
       tee_time: {
         reservation_type: r.comp ? "Members Competition" : null,
-        participants: r.people.map((name) => ({ name })),
+        participants: (r.people || []).map((name) => ({ name })),
         bookable: r.bookable !== false,
-        url: r.bookable !== false ? `/c/bookings/book/tok${r.time.replace(":", "")}/1/` : null,
+        url: r.bookable !== false ? `/c/bookings/book/tok${r.time.replace(":", "")}/1/20261121/${r.time.replace(":", "")}` : null,
         reason: r.bookable !== false ? null : "Booked",
       },
     };
@@ -142,4 +142,20 @@ test("drops the last partner when nothing fits three", async () => {
 test("never takes a casual slot in competition mode", async () => {
   const r = await bookDay(fakePage([{ time: "13:40", comp: false, people: [null, null, null, null] }]), { ...config, retryWindowSeconds: 1 }, "2026-11-14", ["Mark Armstrong"], opts);
   assert.equal(r.time, null);
+});
+
+test("an empty slot has no participant list: 3 free for a competition, 4 for casual", () => {
+  const data = feed([{ time: "08:04", comp: true }, { time: "15:16", comp: false }], null);
+  data.times["08:04"].competition_start = { start_time: "07:56", num_bookable_players: 3 };
+  const { slots } = parseSheet(data, "2026-11-21");
+  assert.deepEqual(slots.map((s) => [s.time, s.free, s.taken]), [["08:04", 3, 0], ["15:16", 4, 0]]);
+});
+
+test("uses the feed's full booking link as-is, or completes a partial one", () => {
+  const data = { times: {
+    "15:16": { tee_time: { participants: [], bookable: true, url: "/c/bookings/book/T%253D/1/20261120/1516" } },
+    "15:24": { tee_time: { participants: [], bookable: true, url: "/c/bookings/book/U%253D/1/" } },
+  } };
+  const { slots } = parseSheet(data, "2026-11-20");
+  assert.deepEqual(slots.map((s) => s.path), ["/c/bookings/book/T%253D/1/20261120/1516", "/c/bookings/book/U%253D/1/20261120/1524"]);
 });

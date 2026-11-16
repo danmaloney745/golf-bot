@@ -23,6 +23,8 @@ export function parseSheet(data, dayIso) {
   const ymd = dayIso.replaceAll("-", "");
   const slots = [];
   let firstComp = null;
+  // Competitions cap the group (3 at Craddockstown, the 4th space shows "x"); casual slots take 4.
+  const compCap = Object.values(data?.times || {}).map((v) => v?.competition_start?.num_bookable_players).find((n) => n > 0) || 3;
   for (const [time, v] of Object.entries(data?.times || {})) {
     const t = v?.tee_time;
     if (!t || !/^\d{2}:\d{2}$/.test(time)) continue;
@@ -33,8 +35,10 @@ export function parseSheet(data, dayIso) {
     slots.push({
       time, comp,
       bookable: !!t.bookable && !!t.url,
-      path: t.url ? `${t.url}${ymd}/${time.replace(":", "")}` : null,
-      free: people.filter((p) => p && p.name == null).length,
+      // The feed's link normally ends with the date and time already; add them if it doesn't.
+      path: t.url ? (/\/\d{8}\/\d{4}$/.test(t.url) ? t.url : `${t.url.replace(/\/?$/, "/")}${ymd}/${time.replace(":", "")}`) : null,
+      // An empty slot comes with no participants at all; a part-booked one lists all four spaces.
+      free: people.length ? people.filter((p) => p && p.name == null).length : (comp ? compCap : 4),
       taken: people.filter((p) => p && p.name && String(p.name).toLowerCase() !== "x").length,
       reason: t.reason || null,
     });
