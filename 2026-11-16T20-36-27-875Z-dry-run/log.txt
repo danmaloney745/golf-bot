@@ -1,0 +1,8 @@
+2026-11-16T20:36:27.906Z Mode dry-run, target weekend 2026-11-28/2026-11-29, opens 2026-11-23 19:16
+2026-11-16T20:36:34.207Z Logged in
+2026-11-16T20:36:34.208Z Test dry-run on 2026-11-20 15:00-16:00, casual allowed, with Mark Armstrong, Hugh Crowther
+2026-11-16T20:36:34.523Z 2026-11-20 entry open after 1 polls (+315ms)
+2026-11-16T20:36:34.523Z 2026-11-20 15:00: opening booking link (+315ms)
+2026-11-16T20:36:36.489Z 2026-11-20 15:00: form open (+2281ms)
+2026-11-16T20:36:37.957Z 2026-11-20 15:00: already on it: Maloney, Daniel; adding: Mark Armstrong, Hugh Crowther
+2026-11-16T20:36:38.246Z Would book 15:00
