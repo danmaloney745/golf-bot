@@ -38,6 +38,17 @@ export async function handler(event = {}) {
   const browser = await pw.launch({ executablePath, args: chromium.args, headless: true });
   // One context = one logged-in session; each tab opened in it shares the login cookies.
   const context = await browser.newContext({ timezoneId: "Europe/Dublin", viewport: { width: 1280, height: 900 } });
+  // Speed: skip adverts, analytics, fonts and images. BRS's own pages, scripts and styles still load
+  // (styles decide which duplicate player cells are visible), and Stripe in case entry needs payment.
+  if (mode !== "recon") {
+    await context.route("**/*", (route) => {
+      const req = route.request();
+      const host = new URL(req.url()).hostname;
+      const ours = host === "members.brsgolf.com" || /(^|\.)stripe\.(com|network)$/.test(host);
+      if (!ours || ["image", "media", "font"].includes(req.resourceType())) return route.abort();
+      return route.continue();
+    });
+  }
   const newTab = async () => { const p = await context.newPage(); p.setDefaultTimeout(15000); return p; };
   const page = await newTab();
 
@@ -131,9 +142,13 @@ export async function handler(event = {}) {
       jobs.push({ day, partners, tab, snap: snapFor(tab) });
       log(`${day}: ${keys.length} player(s)`);
     }
-    const run = (j) => bookDay(j.tab, config, weekend[j.day], j.partners, { dryRun: mode === "dry-run", snap: j.snap, log: (m) => log(`[${j.day}] ${m}`) });
+    // Warm each tab up on its sheet so BRS's scripts and styles are cached before the race.
+    await Promise.all(jobs.map((j) => j.tab.goto(teeSheetUrl(config, weekend[j.day]), { waitUntil: "domcontentloaded" }).catch(() => {})));
+    const opensAt = event.now ? Date.now() : opens.getTime();
+    const run = (j) => bookDay(j.tab, config, weekend[j.day], j.partners, { dryRun: mode === "dry-run", snap: j.snap, log: (m) => log(`[${j.day}] ${m}`), opensAt });
 
-    if (!event.now) await sleep(opens - Date.now());
+    // Start polling the sheet 2.5s early so the bot sees the slots the moment BRS opens them.
+    if (!event.now) await sleep(opens - Date.now() - 2500);
     const settled = await Promise.allSettled(jobs.map(run));
     const record = (j, v) => {
       result[j.day] = v.time ? (v.unconfirmed ? `${v.time}?` : v.time) : null;

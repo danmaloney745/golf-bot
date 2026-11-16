@@ -9,6 +9,50 @@ export function teeSheetUrl(config, dayIso) {
     .replace("{yyyy}", yyyy).replace("{mm}", mm).replace("{dd}", dd);
 }
 
+/** The tee sheet's own data feed: the JSON the page fetches to draw the sheet. */
+export function sheetDataUrl(config, dayIso) {
+  const [yyyy, mm, dd] = dayIso.split("-");
+  return `${config.baseUrl}/${config.club}/tee-sheet/data/${config.courseId}/${yyyy}/${mm}/${dd}`;
+}
+
+/**
+ * Turn the feed into slots. Each tee time has bookable/url, and four participants:
+ * a name when taken, null when free, "x" when the space is blocked.
+ */
+export function parseSheet(data, dayIso) {
+  const ymd = dayIso.replaceAll("-", "");
+  const slots = [];
+  let firstComp = null;
+  for (const [time, v] of Object.entries(data?.times || {})) {
+    const t = v?.tee_time;
+    if (!t || !/^\d{2}:\d{2}$/.test(time)) continue;
+    const comp = /competition/i.test(t.reservation_type || "");
+    const start = v.competition_start?.start_time;
+    if (start && (!firstComp || start < firstComp)) firstComp = start;
+    const people = Array.isArray(t.participants) ? t.participants : [];
+    slots.push({
+      time, comp,
+      bookable: !!t.bookable && !!t.url,
+      path: t.url ? `${t.url}${ymd}/${time.replace(":", "")}` : null,
+      free: people.filter((p) => p && p.name == null).length,
+      taken: people.filter((p) => p && p.name && String(p.name).toLowerCase() !== "x").length,
+      reason: t.reason || null,
+    });
+  }
+  if (!firstComp) firstComp = slots.filter((s) => s.comp).map((s) => s.time).sort()[0] || null;
+  return { slots, firstComp };
+}
+
+/** Fetch the feed with the logged-in session's cookies. Far quicker than rendering the sheet. */
+export async function fetchSheet(request, config, dayIso) {
+  const res = await request.get(`${sheetDataUrl(config, dayIso)}?_=${Date.now()}`, {
+    headers: { "x-requested-with": "XMLHttpRequest", accept: "application/json, text/javascript, */*; q=0.01" },
+    timeout: 5000,
+  });
+  if (!res.ok()) throw new Error(`tee sheet data returned ${res.status()}`);
+  return parseSheet(await res.json(), dayIso);
+}
+
 export async function login(page, config, { user, pass }, snap) {
   await page.goto(`${config.baseUrl}/${config.club}/login`, { waitUntil: "domcontentloaded" });
   const userBox = page.getByLabel(/user ?name|membership/i).or(page.locator('input[name*="user" i]')).first();
@@ -105,28 +149,40 @@ async function fillPlayers(page, names) {
   return { already: onIt, added: todo };
 }
 
-async function tryBook(page, dayIso, slot, names, { dryRun, snap, log }) {
-  await page.locator(`[data-bot-book="${slot.index}"]`).click();
-  // Either the entry form opens, or BRS says another member is holding this slot (a 3-minute lock).
+async function tryBook(page, config, dayIso, slot, names, { dryRun, snap, log, mark }) {
+  // Opening the booking link is exactly what Book Now does; BRS locks the slot for us on this request.
+  mark(`${slot.time}: opening booking link`);
+  await page.goto(config.baseUrl + slot.path, { waitUntil: "commit" });
+  // Either the entry form opens, or BRS says another member holds the slot, or sends us back to the sheet.
   const form = page.locator('select[id^="member_booking_form_player_"]').first();
   const locked = page.locator(".swal2-popup").filter({ hasText: /locked by another user/i });
-  await form.or(locked).first().waitFor({ state: "attached", timeout: 10000 });
+  await Promise.race([
+    form.or(locked).first().waitFor({ state: "attached", timeout: 10000 }),
+    page.waitForURL(/\/tee-sheet\//, { timeout: 10000 }).then(() => locked.first().waitFor({ state: "attached", timeout: 3000 }).catch(() => {})),
+  ]).catch(() => {});
   if (await locked.count()) {
     const text = await locked.first().innerText().catch(() => "");
     await page.locator(".swal2-confirm").first().click({ timeout: 2000 }).catch(() => {});
     throw new LockedError(text);
   }
+  if (!(await form.count())) {
+    if (/\/tee-sheet\//.test(page.url())) throw new LockedError("");
+    throw new Error("Booking form didn't open");
+  }
+  mark(`${slot.time}: form open`);
   if (dryRun) await snap(`${dayIso}-${slot.time.replace(":", "")}-form`);
   const { already, added } = await fillPlayers(page, names);
   log(`${dayIso} ${slot.time}: already on it: ${already.join(", ") || "nobody"}; adding: ${added.join(", ") || "nobody"}`);
   if (dryRun) { await snap("dry-run-ready"); return true; }
   // BRS labels the final button "Create Booking" (empty slot) or "Update Booking" (part-booked).
   await page.getByRole("button", { name: /update booking|confirm|create booking|save booking|complete booking/i }).first().click({ timeout: 5000 });
+  mark(`${slot.time}: submitted`);
   // From here the entry may have gone through, so never move on to another slot.
-  await page.waitForLoadState("networkidle").catch(() => {});
+  await page.waitForLoadState("domcontentloaded").catch(() => {});
+  await page.getByText(/booking confirmed|booking is confirmed/i).first().waitFor({ timeout: 8000 }).catch(() => {});
   await snap(`${dayIso}-${slot.time.replace(":", "")}-result`);
   const body = await page.locator("body").innerText().catch(() => "");
-  if (/booking (confirmed|complete|successful|made)|successfully (booked|entered)|your booking|entry (confirmed|received)/i.test(body)) return true;
+  if (/booking (confirmed|complete|successful|made)|successfully (booked|entered)|your booking|entry (confirmed|received)/i.test(body)) { mark(`${slot.time}: confirmed`); return true; }
   throw new SubmittedError("Submitted, but no confirmation message seen");
 }
 
@@ -155,40 +211,48 @@ export class LockedError extends Error {
  * hour per account, so a split across two times isn't possible.
  * Returns { time, unconfirmed, dropped }: time is null if nothing was entered.
  */
-export async function bookDay(page, config, dayIso, partners, { dryRun, snap, log }) {
-  const started = Date.now();
-  const deadline = started + config.retryWindowSeconds * 1000;
-  const twoBallFrom = started + (config.twoBallAfterSeconds ?? 60) * 1000;
+/**
+ * Book one day. Polls the tee sheet feed a few times a second until a target slot is bookable,
+ * then opens its booking link straight away. Targets: competition slots after the first one,
+ * earliest first, up to latestTeeTime, with room for the whole group.
+ * Returns { time, unconfirmed, dropped }: time is null if nothing was entered.
+ */
+export async function bookDay(page, config, dayIso, partners, { dryRun, snap, log, opensAt = Date.now() }) {
+  const deadline = Math.max(Date.now(), opensAt) + config.retryWindowSeconds * 1000;
+  const twoBallFrom = opensAt + (config.twoBallAfterSeconds ?? 60) * 1000;
   const retryAt = new Map(); // tee time -> when it may be tried again (locks run out; other failures never)
   const group = [...partners], dropped = [];
   const me = Object.values(config.players).find((p) => p.isBookingAccount).name;
-  const free = (s) => (retryAt.get(s.time) ?? 0) <= Date.now();
+  const request = page.context().request;
+  const ready = (s) => (retryAt.get(s.time) ?? 0) <= Date.now();
   const fits = (open) => orderSlots(open, config.earliestTeeTime, config.latestTeeTime, group.length + 1);
-  let loggedFirst = false;
+  const mark = (m) => log(`${dayIso} ${m} (${Date.now() - opensAt >= 0 ? "+" : ""}${Date.now() - opensAt}ms)`);
+  let loggedFirst = false, sawBookable = false, polls = 0, lastErr = "";
   while (Date.now() < deadline) {
-    await page.goto(teeSheetUrl(config, dayIso), { waitUntil: "domcontentloaded" });
-    await page.locator(".size-marker").first().waitFor({ timeout: 10000 }).catch(() => {});
+    let sheet;
+    try { sheet = await fetchSheet(request, config, dayIso); polls++; }
+    catch (e) { if (e.message !== lastErr) log(`${dayIso}: ${e.message}`); lastErr = e.message; await sleep(300); continue; }
     // Skip the competition's first tee time: everyone goes for it, so aim for the one after.
-    const firstComp = config.skipFirstCompetitionSlot ? await firstCompetitionTime(page) : null;
+    const firstComp = config.skipFirstCompetitionSlot ? sheet.firstComp : null;
     if (firstComp && !loggedFirst) { log(`${dayIso}: first competition slot is ${firstComp}; aiming for the next one`); loggedFirst = true; }
-    const open = (await findSlots(page)).filter((s) => (!config.competitionsOnly || s.comp) && (!config.emptyOnly || !s.taken)
-      && (!firstComp || toMinutes(s.time) > toMinutes(firstComp)) && free(s));
+    const open = sheet.slots.filter((s) => s.bookable && (!config.competitionsOnly || s.comp) && (!config.emptyOnly || !s.taken)
+      && (!firstComp || toMinutes(s.time) > toMinutes(firstComp)) && ready(s));
+    if (open.length && !sawBookable) { mark(`entry open after ${polls} polls`); sawBookable = true; }
     let slots = fits(open);
-    // Only settle for a two-ball once a three-ball has had a fair chance (locked slots free up after 3 minutes).
+    // Only settle for a two-ball once a three-ball has had a fair chance (locks run out after 3 minutes).
     while (!slots.length && open.length && group.length > 1 && Date.now() >= twoBallFrom) {
       dropped.unshift(group.pop());
       log(`${dayIso}: no slot with room for everyone; entering ${group.length + 1} without ${dropped[0]}`);
       slots = fits(open);
     }
     if (!slots.length) {
-      // Poll quickly around opening, then every 5s while locks run out.
-      await sleep(Date.now() - started < 20_000 ? 500 : 5000);
+      // Poll fast around opening, then every 3s while locks run out.
+      await sleep(Date.now() < opensAt + 20_000 ? 150 : 3000);
       continue;
     }
-    // Work down the list on this page: a locked slot costs well under a second, so move straight on.
     for (const slot of slots) {
       try {
-        if (await tryBook(page, dayIso, slot, [me, ...group], { dryRun, snap, log })) return { time: slot.time, unconfirmed: false, dropped };
+        if (await tryBook(page, config, dayIso, slot, [me, ...group], { dryRun, snap, log, mark })) return { time: slot.time, unconfirmed: false, dropped };
       } catch (e) {
         if (e instanceof SubmittedError) {
           log(`${dayIso} ${slot.time}: ${e.message}. Stopping this day so it can't double-book; check BRS.`);
@@ -196,17 +260,17 @@ export async function bookDay(page, config, dayIso, partners, { dryRun, snap, lo
         }
         if (e instanceof LockedError) {
           retryAt.set(slot.time, e.until);
-          log(`${dayIso} ${slot.time}: locked by another member until ${new Date(e.until).toISOString().slice(11, 19)}Z; next slot`);
+          mark(`${slot.time}: locked by another member until ${new Date(e.until).toISOString().slice(11, 19)}Z; next slot`);
           continue;
         }
         retryAt.set(slot.time, Infinity);
-        log(`${dayIso} ${slot.time} failed: ${e.message}. Reloading.`);
+        log(`${dayIso} ${slot.time} failed: ${e.message}.`);
         await snap(`${dayIso}-${slot.time.replace(":", "")}-failed`);
         break;
       }
     }
   }
-  log(`${dayIso}: nothing entered within ${config.retryWindowSeconds}s`);
+  log(`${dayIso}: nothing entered within ${config.retryWindowSeconds}s of opening`);
   await snap(`${dayIso}-no-slots`);
   return { time: null, unconfirmed: false, dropped: [] };
 }
