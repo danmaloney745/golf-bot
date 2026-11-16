@@ -1,0 +1,7 @@
+2026-11-16T20:27:35.755Z Mode dry-run, target weekend 2026-11-28/2026-11-29, opens 2026-11-23 19:16
+2026-11-16T20:27:43.508Z Logged in
+2026-11-16T20:27:43.508Z Test dry-run on 2026-11-20 15:00-16:00, casual allowed, with Mark Armstrong, Hugh Crowther
+2026-11-16T20:27:43.982Z 2026-11-20 entry open after 1 polls (+473ms)
+2026-11-16T20:28:46.002Z 2026-11-20: no slot with room for everyone; entering 2 without Hugh Crowther
+2026-11-16T20:32:43.550Z 2026-11-20: nothing entered within 300s of opening
+2026-11-16T20:32:44.139Z Nothing booked
