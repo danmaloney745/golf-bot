@@ -123,7 +123,7 @@ export async function handler(event = {}) {
         throw new Error("watch needs date (sheet), opensDay and at (HH:MM)");
       }
       const watchOpens = dublinInstant(event.opensDay, event.at).getTime();
-      const watchConfig = { ...config, competitionsOnly: !event.casual, emptyOnly: false };
+      const watchConfig = { ...config, competitionsOnly: !event.casual, emptyOnly: false, earliestTeeTime: "00:00", latestTeeTime: "23:59" };
       const partners = Object.values(config.players).filter((p) => !p.isBookingAccount).map((p) => p.name);
       const clock = dateFetcher(context.request, teeSheetUrl(config, event.date));
       const first = await measureOffset(clock);
