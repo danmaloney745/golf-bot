@@ -1,0 +1,25 @@
+2026-11-16T19:10:20.125Z Mode book, target weekend 2026-11-21/2026-11-22, opens 2026-11-16 19:16
+2026-11-16T19:12:05.622Z Logged in
+2026-11-16T19:15:30.027Z sat: 3 player(s)
+2026-11-16T19:15:30.049Z sun: 3 player(s)
+2026-11-16T19:16:03.168Z [sun] 2026-11-22: first competition slot is 07:56; aiming for the next one
+2026-11-16T19:16:03.170Z [sat] 2026-11-21: first competition slot is 07:56; aiming for the next one
+2026-11-16T19:16:23.766Z [sat] 2026-11-21 08:04 failed: locator.waitFor: Timeout 10000ms exceeded.
+Call log:
+  - waiting for locator('select[id^="member_booking_form_player_"]').first()
+. Trying next slot.
+2026-11-16T19:16:23.780Z [sun] 2026-11-22 08:20 failed: locator.waitFor: Timeout 10000ms exceeded.
+Call log:
+  - waiting for locator('select[id^="member_booking_form_player_"]').first()
+. Trying next slot.
+2026-11-16T19:16:26.032Z [sat] 2026-11-21: no slot with room for everyone; entering 2 without Hugh Crowther
+2026-11-16T19:16:26.046Z [sun] 2026-11-22: no slot with room for everyone; entering 2 without Hugh Crowther
+2026-11-16T19:16:33.001Z [sat] 2026-11-21 09:00: already on it: Armstrong, Mark, Member not in list; adding: Daniel Maloney
+2026-11-16T19:16:57.748Z [sun] 2026-11-22: no enterable slots after 8 loads
+2026-11-16T19:16:59.676Z [sun] retrying on its own
+2026-11-16T19:17:00.922Z [sun] 2026-11-22: first competition slot is 07:56; aiming for the next one
+2026-11-16T19:17:01.007Z [sun] 2026-11-22: no slot with room for everyone; entering 2 without Hugh Crowther
+2026-11-16T19:17:31.872Z [sun] 2026-11-22: no enterable slots after 8 loads
+2026-11-16T19:17:33.942Z sat: booked 09:00
+2026-11-16T19:17:33.942Z sat: left out, needs to enter himself: Hugh Crowther
+2026-11-16T19:17:33.942Z sun: not booked
