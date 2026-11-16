@@ -1,0 +1,12 @@
+2026-11-16T20:13:35.537Z Mode recon, target weekend 2026-11-28/2026-11-29, opens 2026-11-23 19:16
+2026-11-16T20:13:43.258Z Logged in
+2026-11-16T20:13:46.443Z 2026-11-28: first competition slot 08:04
+2026-11-16T20:13:47.535Z 2026-11-28: probe 0: raw GET 143ms (status 200, 36128 bytes, size-markers 0, book links 0); full page 939ms
+2026-11-16T20:13:48.642Z 2026-11-28: probe 1: raw GET 60ms (status 200, 36128 bytes, size-markers 0, book links 0); full page 1044ms
+2026-11-16T20:13:49.919Z 2026-11-28: probe 2: raw GET 58ms (status 200, 36128 bytes, size-markers 0, book links 0); full page 1219ms
+2026-11-16T20:13:49.919Z 2026-11-28: book/enter buttons found: []
+2026-11-16T20:13:53.559Z 2026-11-29: first competition slot 08:12
+2026-11-16T20:13:54.720Z 2026-11-29: probe 0: raw GET 56ms (status 200, 36128 bytes, size-markers 0, book links 0); full page 1105ms
+2026-11-16T20:13:55.757Z 2026-11-29: probe 1: raw GET 40ms (status 200, 36128 bytes, size-markers 0, book links 0); full page 997ms
+2026-11-16T20:13:56.778Z 2026-11-29: probe 2: raw GET 79ms (status 200, 36128 bytes, size-markers 0, book links 0); full page 942ms
+2026-11-16T20:13:56.778Z 2026-11-29: book/enter buttons found: []
