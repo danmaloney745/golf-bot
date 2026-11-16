@@ -23,7 +23,7 @@ export async function readOffset(fetchDate, { maxMs = 4000 } = {}) {
 }
 
 /** Several readings a moment apart; the median is the answer, the spread shows how much to trust it. */
-export async function measureOffset(fetchDate, { readings = 3, gapMs = 150 } = {}) {
+export async function measureOffset(fetchDate, { readings = 5, gapMs = 150 } = {}) {
   const out = [];
   for (let i = 0; i < readings; i++) {
     try { out.push(await readOffset(fetchDate)); } catch { /* skip a failed reading */ }
@@ -35,7 +35,7 @@ export async function measureOffset(fetchDate, { readings = 3, gapMs = 150 } = {
   return { offset: median.offset, error: median.error, readings: out.map((r) => r.offset) };
 }
 
-/** Date-header reader for a Playwright request context. */
+/** Date-header reader for a Playwright request context. HEAD keeps each request tiny. */
 export function dateFetcher(request, url) {
   let method = "HEAD";
   return async () => {

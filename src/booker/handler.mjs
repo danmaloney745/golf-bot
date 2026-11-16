@@ -125,7 +125,7 @@ export async function handler(event = {}) {
       const watchOpens = dublinInstant(event.opensDay, event.at).getTime();
       const watchConfig = { ...config, competitionsOnly: !event.casual, emptyOnly: false };
       const partners = Object.values(config.players).filter((p) => !p.isBookingAccount).map((p) => p.name);
-      const clock = dateFetcher(context.request, sheetDataUrl(config, event.date));
+      const clock = dateFetcher(context.request, teeSheetUrl(config, event.date));
       const first = await measureOffset(clock);
       log(`Clock: BRS is ${first.offset}ms ${first.offset >= 0 ? "ahead of" : "behind"} AWS (±${first.error}ms; readings ${first.readings.join(", ")})`);
       await sleep(watchOpens - first.offset - Date.now() - 20_000);
@@ -170,7 +170,7 @@ export async function handler(event = {}) {
     // Sync to BRS's clock: it decides the opening moment, not ours.
     let offset = 0;
     if (!event.now && jobs.length) {
-      const sync = await measureOffset(dateFetcher(context.request, sheetDataUrl(config, weekend[jobs[0].day])));
+      const sync = await measureOffset(dateFetcher(context.request, teeSheetUrl(config, weekend[jobs[0].day])));
       offset = sync.offset;
       log(`Clock: BRS is ${sync.offset}ms ${sync.offset >= 0 ? "ahead of" : "behind"} AWS (±${sync.error}ms; readings ${sync.readings.join(", ")})`);
     }

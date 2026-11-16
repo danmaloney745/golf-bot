@@ -222,7 +222,7 @@ export class LockedError extends Error {
  */
 export function raceOpening(fetch, { opensAt, offset = 0, isOpen, pollers = 2, until: stopAt = Infinity }) {
   const opensLocal = opensAt - offset; // when BRS's clock reads the opening time, on our clock
-  const until = Math.min(opensLocal + 20_000, stopAt);
+  const until = Math.min(Math.max(opensLocal, Date.now()) + 20_000, stopAt);
   return new Promise((resolve) => {
     let done = false, lastClosedSent = null, requests = 0;
     const finish = (v) => { if (!done) { done = true; resolve(v); } };
