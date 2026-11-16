@@ -67,6 +67,18 @@ export async function handler(event = {}) {
         await snap(`tee-sheet-${day}`);
         const slots = await findSlots(page);
         log(`${day}: first competition slot ${await firstCompetitionTime(page)}`);
+        // Speed probe: raw HTML fetch vs full page load.
+        for (let i = 0; i < 3; i++) {
+          let t = Date.now();
+          const res = await context.request.get(teeSheetUrl(config, day));
+          const html = await res.text();
+          const raw = Date.now() - t;
+          t = Date.now();
+          await page.goto(teeSheetUrl(config, day), { waitUntil: "domcontentloaded" });
+          await page.locator(".size-marker").first().waitFor({ timeout: 10000 }).catch(() => {});
+          const full = Date.now() - t;
+          log(`${day}: probe ${i}: raw GET ${raw}ms (status ${res.status()}, ${html.length} bytes, size-markers ${(html.match(/size-marker/g) || []).length}, book links ${(html.match(/bookings\/book\//g) || []).length}); full page ${full}ms`);
+        }
         log(`${day}: book/enter buttons found: ${JSON.stringify(slots.slice(0, 10))}${slots.length > 10 ? ` (+${slots.length - 10} more)` : ""}`);
         if (event.click && slots.length) {
           await page.locator(`[data-bot-book="${slots[0].index}"]`).click();
