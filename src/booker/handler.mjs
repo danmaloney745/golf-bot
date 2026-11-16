@@ -86,8 +86,17 @@ export async function handler(event = {}) {
         page.off("response", onResp);
         log(`${day}: book/enter buttons found: ${JSON.stringify(slots.slice(0, 10))}${slots.length > 10 ? ` (+${slots.length - 10} more)` : ""}`);
         if (event.click && slots.length) {
-          await page.locator(`[data-bot-book="${slots[0].index}"]`).click();
-          await page.waitForLoadState("domcontentloaded");
+          // Log every request the click makes, to see how BRS checks locks before opening the form.
+          const target = slots.filter((x) => !x.comp && !x.taken).pop() || slots[slots.length - 1];
+          const reqs = [];
+          const onReq = (r) => { if (!/doubleclick|google|gstatic|fontawesome|adtraffic/.test(r.url())) reqs.push(`${Date.now()} ${r.method()} ${r.resourceType()} ${r.url().replace(/^https:\/\/members\.brsgolf\.com/, "")}`); };
+          const onResp = (r) => { if (/members\.brsgolf\.com/.test(r.url()) && !/\.(js|css|png|svg|woff2?)/.test(r.url())) reqs.push(`${Date.now()}   <- ${r.status()} ${r.url().replace(/^https:\/\/members\.brsgolf\.com/, "")} ${r.headers()["location"] || ""}`); };
+          page.on("request", onReq); page.on("response", onResp);
+          log(`${day}: clicking ${target.time} to watch the requests`);
+          await page.locator(`[data-bot-book="${target.index}"]`).click();
+          await page.waitForTimeout(5000);
+          page.off("request", onReq); page.off("response", onResp);
+          log(`${day}: click requests:\n${reqs.join("\n")}`);
           await snap(`booking-form-${day}`);
         }
       }

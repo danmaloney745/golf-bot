@@ -24,6 +24,10 @@ on:
         description: "Allow casual (non-competition) slots"
         type: boolean
         default: false
+      click:
+        description: "Recon only: open one booking form (books nothing) and log its requests"
+        type: boolean
+        default: false
 
 concurrency:
   group: test-run
@@ -52,13 +56,14 @@ jobs:
           FROM: ${{ inputs.from }}
           TO: ${{ inputs.to }}
           CASUAL: ${{ inputs.casual }}
+          CLICK: ${{ inputs.click }}
         run: |
           out() { aws cloudformation describe-stacks --stack-name "$STACK" --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }
           FN=$(out BookerFunctionName); BUCKET=$(out RunsBucketName)
           echo "BUCKET=$BUCKET" >> "$GITHUB_ENV"
           if [ "$MODE" = "book" ] && [ -z "$DATE" ]; then echo "::error::Real bookings from a test run need a date"; exit 1; fi
-          PAYLOAD=$(jq -cn --arg mode "$MODE" --arg date "$DATE" --arg from "$FROM" --arg to "$TO" --argjson casual "$CASUAL" \
-            '{mode:$mode, now:true} + (if $date != "" then {date:$date, casual:$casual} else {} end)
+          PAYLOAD=$(jq -cn --arg mode "$MODE" --arg date "$DATE" --arg from "$FROM" --arg to "$TO" --argjson casual "$CASUAL" --argjson click "$CLICK" \
+            '{mode:$mode, now:true, click:$click} + (if $date != "" then {date:$date, casual:$casual} else {} end)
              + (if $from != "" then {from:$from} else {} end) + (if $to != "" then {to:$to} else {} end)')
           echo "Payload: $PAYLOAD"
           aws lambda invoke --function-name "$FN" --cli-read-timeout 900 \
