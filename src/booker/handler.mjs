@@ -85,6 +85,7 @@ export async function handler(event = {}) {
         log(`${day}: full page ${Date.now() - t0}ms; xhr: ${JSON.stringify(seen)}`);
         page.off("response", onResp);
         log(`${day}: book/enter buttons found: ${JSON.stringify(slots.slice(0, 10))}${slots.length > 10 ? ` (+${slots.length - 10} more)` : ""}`);
+        if (event.click) slots.splice(0, slots.length, ...(await findSlots(page))); // the probe reloaded the page
         if (event.click && slots.length) {
           // Log every request the click makes, to see how BRS checks locks before opening the form.
           const target = slots.filter((x) => !x.comp && !x.taken).pop() || slots[slots.length - 1];
