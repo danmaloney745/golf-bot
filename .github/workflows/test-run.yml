@@ -9,7 +9,7 @@ on:
     inputs:
       mode:
         type: choice
-        options: [recon, dry-run, book]
+        options: [recon, dry-run, book, watch]
         default: recon
       date:
         description: "One-off test date (YYYY-MM-DD); books with all three players. Blank = this weekend's ticks"
@@ -24,6 +24,12 @@ on:
         description: "Allow casual (non-competition) slots"
         type: boolean
         default: false
+      opens_day:
+        description: "Watch only: the day the sheet opens (YYYY-MM-DD)"
+        default: ""
+      at:
+        description: "Watch only: the opening time (HH:MM, Dublin)"
+        default: ""
       click:
         description: "Recon only: open one booking form (books nothing) and log its requests"
         type: boolean
@@ -57,13 +63,16 @@ jobs:
           TO: ${{ inputs.to }}
           CASUAL: ${{ inputs.casual }}
           CLICK: ${{ inputs.click }}
+          OPENS_DAY: ${{ inputs.opens_day }}
+          AT: ${{ inputs.at }}
         run: |
           out() { aws cloudformation describe-stacks --stack-name "$STACK" --query "Stacks[0].Outputs[?OutputKey=='$1'].OutputValue" --output text; }
           FN=$(out BookerFunctionName); BUCKET=$(out RunsBucketName)
           echo "BUCKET=$BUCKET" >> "$GITHUB_ENV"
           if [ "$MODE" = "book" ] && [ -z "$DATE" ]; then echo "::error::Real bookings from a test run need a date"; exit 1; fi
-          PAYLOAD=$(jq -cn --arg mode "$MODE" --arg date "$DATE" --arg from "$FROM" --arg to "$TO" --argjson casual "$CASUAL" --argjson click "$CLICK" \
+          PAYLOAD=$(jq -cn --arg mode "$MODE" --arg date "$DATE" --arg from "$FROM" --arg to "$TO" --argjson casual "$CASUAL" --argjson click "$CLICK" --arg opensDay "$OPENS_DAY" --arg at "$AT" \
             '{mode:$mode, now:true, click:$click} + (if $date != "" then {date:$date, casual:$casual} else {} end)
+             + (if $opensDay != "" then {opensDay:$opensDay, at:$at} else {} end)
              + (if $from != "" then {from:$from} else {} end) + (if $to != "" then {to:$to} else {} end)')
           echo "Payload: $PAYLOAD"
           aws lambda invoke --function-name "$FN" --cli-read-timeout 900 \

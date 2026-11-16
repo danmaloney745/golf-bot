@@ -8,7 +8,8 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getWeekend, saveResult } from "../lib/store.mjs";
 import { targetWeekend, dublinInstant, sleep } from "../lib/time.mjs";
 import { playersFor } from "../lib/slots.mjs";
-import { login, bookDay, findSlots, firstCompetitionTime, teeSheetUrl } from "./brs.mjs";
+import { login, bookDay, findSlots, firstCompetitionTime, teeSheetUrl, sheetDataUrl } from "./brs.mjs";
+import { measureOffset, dateFetcher } from "../lib/clock.mjs";
 
 const config = JSON.parse(readFileSync(new URL("../config.json", import.meta.url), "utf8"));
 const ssm = new SSMClient({});
@@ -115,6 +116,27 @@ export async function handler(event = {}) {
       return result;
     }
 
+    // Watch a real opening without booking: sync to BRS's clock, race the opening exactly as on a
+    // Monday, and stop at "slot is open". Never opens a booking link, so nothing is locked or booked.
+    if (mode === "watch") {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(event.date || "") || !/^\d{4}-\d{2}-\d{2}$/.test(event.opensDay || "") || !/^\d{2}:\d{2}$/.test(event.at || "")) {
+        throw new Error("watch needs date (sheet), opensDay and at (HH:MM)");
+      }
+      const watchOpens = dublinInstant(event.opensDay, event.at).getTime();
+      const watchConfig = { ...config, competitionsOnly: !event.casual, emptyOnly: false };
+      const partners = Object.values(config.players).filter((p) => !p.isBookingAccount).map((p) => p.name);
+      const clock = dateFetcher(context.request, sheetDataUrl(config, event.date));
+      const first = await measureOffset(clock);
+      log(`Clock: BRS is ${first.offset}ms ${first.offset >= 0 ? "ahead of" : "behind"} AWS (±${first.error}ms; readings ${first.readings.join(", ")})`);
+      await sleep(watchOpens - first.offset - Date.now() - 20_000);
+      const sync = await measureOffset(clock);
+      log(`Clock 20s before: BRS ${sync.offset}ms (±${sync.error}ms; readings ${sync.readings.join(", ")})`);
+      const v = await bookDay(page, watchConfig, event.date, partners, { watchOnly: true, snap, log, opensAt: watchOpens, offset: sync.offset });
+      Object.assign(result, { watch: event.date, offset: sync.offset, ...v });
+      log(v.time ? `Watched: ${v.time} became bookable` : "Watched: nothing opened");
+      return result;
+    }
+
     // One-off test on any date: all three players, a custom time window, casual slots allowed if asked.
     // Never reads or writes the availability page's data.
     if (event.date) {
@@ -145,10 +167,17 @@ export async function handler(event = {}) {
     // Warm each tab up on its sheet so BRS's scripts and styles are cached before the race.
     await Promise.all(jobs.map((j) => j.tab.goto(teeSheetUrl(config, weekend[j.day]), { waitUntil: "domcontentloaded" }).catch(() => {})));
     const opensAt = event.now ? Date.now() : opens.getTime();
-    const run = (j) => bookDay(j.tab, config, weekend[j.day], j.partners, { dryRun: mode === "dry-run", snap: j.snap, log: (m) => log(`[${j.day}] ${m}`), opensAt });
+    // Sync to BRS's clock: it decides the opening moment, not ours.
+    let offset = 0;
+    if (!event.now && jobs.length) {
+      const sync = await measureOffset(dateFetcher(context.request, sheetDataUrl(config, weekend[jobs[0].day])));
+      offset = sync.offset;
+      log(`Clock: BRS is ${sync.offset}ms ${sync.offset >= 0 ? "ahead of" : "behind"} AWS (±${sync.error}ms; readings ${sync.readings.join(", ")})`);
+    }
+    const run = (j) => bookDay(j.tab, config, weekend[j.day], j.partners, { dryRun: mode === "dry-run", snap: j.snap, log: (m) => log(`[${j.day}] ${m}`), opensAt, offset });
 
     // Start polling the sheet 2.5s early so the bot sees the slots the moment BRS opens them.
-    if (!event.now) await sleep(opens - Date.now() - 2500);
+    if (!event.now) await sleep(opens - offset - Date.now() - 3000);
     const settled = await Promise.allSettled(jobs.map(run));
     const record = (j, v) => {
       result[j.day] = v.time ? (v.unconfirmed ? `${v.time}?` : v.time) : null;

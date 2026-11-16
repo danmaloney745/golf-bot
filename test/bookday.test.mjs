@@ -159,3 +159,50 @@ test("uses the feed's full booking link as-is, or completes a partial one", () =
   const { slots } = parseSheet(data, "2026-11-20");
   assert.deepEqual(slots.map((s) => s.path), ["/c/bookings/book/T%253D/1/20261120/1516", "/c/bookings/book/U%253D/1/20261120/1524"]);
 });
+
+// ---- clock sync and the opening race
+
+import { readOffset, measureOffset } from "../src/lib/clock.mjs";
+import { raceOpening } from "../src/booker/brs.mjs";
+
+/** A fake BRS whose clock runs `skew` ms ahead of ours; its Date header shows whole seconds. */
+const fakeServerDate = (skew, latency = 30) => async () => {
+  await new Promise((r) => setTimeout(r, latency / 2));
+  const t = Math.floor((Date.now() + skew) / 1000) * 1000;
+  await new Promise((r) => setTimeout(r, latency / 2));
+  return t;
+};
+
+for (const skew of [0, 730, -1240, 4380]) {
+  test(`clock sync finds a BRS clock ${skew}ms off, to within 60ms`, async () => {
+    const { offset, readings } = await measureOffset(fakeServerDate(skew), { readings: 3, gapMs: 0 });
+    assert.equal(readings.length, 3);
+    assert.ok(Math.abs(offset - skew) <= 60, `measured ${offset}, true ${skew}`);
+  });
+}
+
+test("one reading reports its own error bound", async () => {
+  const r = await readOffset(fakeServerDate(500, 40));
+  assert.ok(Math.abs(r.offset - 500) <= r.error + 5, JSON.stringify(r));
+});
+
+test("race: with BRS's clock 1.5s ahead, sees the opening within ~150ms of the true moment", async () => {
+  const skew = 1500;
+  const opensAt = Date.now() + 2500;           // opening time on BRS's clock
+  const trueOpenLocal = opensAt - skew;        // when that is on ours
+  let requests = 0;
+  const fetch = async () => { requests++; await new Promise((r) => setTimeout(r, 40)); return { open: Date.now() >= trueOpenLocal }; };
+  const r = await raceOpening(fetch, { opensAt, offset: skew, isOpen: (sh) => sh.open });
+  assert.ok(r, "saw it open");
+  const late = r.sent - trueOpenLocal;
+  assert.ok(late >= -60 && late <= 150, `request that saw it was sent ${late}ms after the true opening`);
+  assert.ok(requests < 60, `kept requests modest: ${requests}`);
+});
+
+test("race: if the clock sync is wrong, still catches an opening outside the burst", async () => {
+  const opensAt = Date.now() + 1000;
+  const trueOpenLocal = opensAt + 3000;        // BRS actually opens 3s late
+  const fetch = async () => { await new Promise((r) => setTimeout(r, 30)); return { open: Date.now() >= trueOpenLocal }; };
+  const r = await raceOpening(fetch, { opensAt, offset: 0, isOpen: (sh) => sh.open });
+  assert.ok(r && r.sent - trueOpenLocal <= 250, `late by ${r && r.sent - trueOpenLocal}ms`);
+});

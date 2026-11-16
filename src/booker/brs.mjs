@@ -216,12 +216,52 @@ export class LockedError extends Error {
  * Returns { time, unconfirmed, dropped }: time is null if nothing was entered.
  */
 /**
+ * Wait for the opening on BRS's clock and return the first sheet in which `isOpen` is true.
+ * Poller 0 checks every 250ms until 0.3s before opening; then both pollers, staggered, check back
+ * to back until 2s after; then every 150ms up to 20s after. Returns null if nothing opens by then.
+ */
+export function raceOpening(fetch, { opensAt, offset = 0, isOpen, pollers = 2, until: stopAt = Infinity }) {
+  const opensLocal = opensAt - offset; // when BRS's clock reads the opening time, on our clock
+  const until = Math.min(opensLocal + 20_000, stopAt);
+  return new Promise((resolve) => {
+    let done = false, lastClosedSent = null, requests = 0;
+    const finish = (v) => { if (!done) { done = true; resolve(v); } };
+    const poller = async (id) => {
+      while (!done && Date.now() < until) {
+        const toOpen = opensLocal - Date.now();
+        if (toOpen > 300) {
+          if (id > 0) { await sleep(Math.min(toOpen - 300, 250)); continue; }
+          if (toOpen > 2500) { await sleep(Math.min(toOpen - 2500, 1000)); continue; }
+        } else if (id > 0 && requests === 0) {
+          await sleep(40 * id); // stagger the second poller
+        }
+        const sent = Date.now();
+        let sheet;
+        try { requests++; sheet = await fetch(); } catch { await sleep(100); continue; }
+        if (done) return;
+        if (isOpen(sheet)) {
+          finish({ sheet, sent, lastClosedSent, requests, poller: id });
+          return;
+        }
+        if (lastClosedSent == null || sent > lastClosedSent) lastClosedSent = sent;
+        const now = opensLocal - Date.now();
+        if (now > 300) await sleep(250);
+        else if (now < -2000) await sleep(150);
+        else await sleep(10); // back to back during the burst, with a breather
+      }
+      if (id === 0) finish(null);
+    };
+    for (let i = 0; i < pollers; i++) poller(i);
+  });
+}
+
+/**
  * Book one day. Polls the tee sheet feed a few times a second until a target slot is bookable,
  * then opens its booking link straight away. Targets: competition slots after the first one,
  * earliest first, up to latestTeeTime, with room for the whole group.
  * Returns { time, unconfirmed, dropped }: time is null if nothing was entered.
  */
-export async function bookDay(page, config, dayIso, partners, { dryRun, snap, log, opensAt = Date.now() }) {
+export async function bookDay(page, config, dayIso, partners, { dryRun, watchOnly, snap, log, opensAt = Date.now(), offset = 0 }) {
   const deadline = Math.max(Date.now(), opensAt) + config.retryWindowSeconds * 1000;
   const twoBallFrom = opensAt + (config.twoBallAfterSeconds ?? 60) * 1000;
   const retryAt = new Map(); // tee time -> when it may be tried again (locks run out; other failures never)
@@ -230,18 +270,35 @@ export async function bookDay(page, config, dayIso, partners, { dryRun, snap, lo
   const request = page.context().request;
   const ready = (s) => (retryAt.get(s.time) ?? 0) <= Date.now();
   const fits = (open) => orderSlots(open, config.earliestTeeTime, config.latestTeeTime, group.length + 1);
-  const mark = (m) => log(`${dayIso} ${m} (${Date.now() - opensAt >= 0 ? "+" : ""}${Date.now() - opensAt}ms)`);
-  let loggedFirst = false, sawBookable = false, polls = 0, lastErr = "";
-  while (Date.now() < deadline) {
-    let sheet;
-    try { sheet = await fetchSheet(request, config, dayIso); polls++; }
-    catch (e) { if (e.message !== lastErr) log(`${dayIso}: ${e.message}`); lastErr = e.message; await sleep(300); continue; }
+  const mark = (m) => log(`${dayIso} ${m} (${Date.now() - (opensAt - offset) >= 0 ? "+" : ""}${Date.now() - (opensAt - offset)}ms)`);
+  const targets = (sheet) => {
     // Skip the competition's first tee time: everyone goes for it, so aim for the one after.
     const firstComp = config.skipFirstCompetitionSlot ? sheet.firstComp : null;
-    if (firstComp && !loggedFirst) { log(`${dayIso}: first competition slot is ${firstComp}; aiming for the next one`); loggedFirst = true; }
-    const open = sheet.slots.filter((s) => s.bookable && (!config.competitionsOnly || s.comp) && (!config.emptyOnly || !s.taken)
+    return sheet.slots.filter((s) => s.bookable && (!config.competitionsOnly || s.comp) && (!config.emptyOnly || !s.taken)
       && (!firstComp || toMinutes(s.time) > toMinutes(firstComp)) && ready(s));
-    if (open.length && !sawBookable) { mark(`entry open after ${polls} polls`); sawBookable = true; }
+  };
+  // Race the opening on BRS's clock. Locally, mark() times are on our clock relative to the opening
+  // on BRS's clock, so +0ms is the true opening moment.
+  const fetch = () => fetchSheet(request, config, dayIso);
+  const markAt = (m, t) => log(`${dayIso} ${m} (${t - (opensAt - offset) >= 0 ? "+" : ""}${t - (opensAt - offset)}ms)`);
+  const raced = await raceOpening(fetch, { opensAt, offset, until: deadline, isOpen: (sh) => fits(targets(sh)).length > 0 || (Date.now() >= twoBallFrom && targets(sh).length > 0) });
+  if (raced) {
+    if (raced.sheet.firstComp && config.skipFirstCompetitionSlot) log(`${dayIso}: first competition slot is ${raced.sheet.firstComp}; aiming for the next one`);
+    markAt(`entry open: seen by poller ${raced.poller} after ${raced.requests} requests; last closed check sent at ${raced.lastClosedSent == null ? "n/a" : (raced.lastClosedSent - (opensAt - offset)) + "ms"}`, raced.sent);
+    if (watchOnly) return { time: fits(targets(raced.sheet))[0]?.time || targets(raced.sheet)[0]?.time || null, watched: true, sent: raced.sent, lastClosedSent: raced.lastClosedSent };
+  } else {
+    log(`${dayIso}: nothing opened within 20s of the opening time`);
+    if (watchOnly) return { time: null, watched: true };
+  }
+  let pending = raced?.sheet || null, lastErr = "";
+  while (Date.now() < deadline) {
+    let sheet = pending;
+    pending = null;
+    if (!sheet) {
+      try { sheet = await fetch(); }
+      catch (e) { if (e.message !== lastErr) log(`${dayIso}: ${e.message}`); lastErr = e.message; await sleep(300); continue; }
+    }
+    const open = targets(sheet);
     let slots = fits(open);
     // Only settle for a two-ball once a three-ball has had a fair chance (locks run out after 3 minutes).
     while (!slots.length && open.length && group.length > 1 && Date.now() >= twoBallFrom) {
@@ -250,8 +307,8 @@ export async function bookDay(page, config, dayIso, partners, { dryRun, snap, lo
       slots = fits(open);
     }
     if (!slots.length) {
-      // Poll fast around opening, then every 3s while locks run out.
-      await sleep(Date.now() < opensAt + 20_000 ? 150 : 3000);
+      // Every 3s while locks run out (the race above already covered the opening itself).
+      await sleep(3000);
       continue;
     }
     for (const slot of slots) {
