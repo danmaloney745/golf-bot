@@ -1,0 +1,43 @@
+2026-11-16T20:22:25.345Z Mode recon, target weekend 2026-11-28/2026-11-29, opens 2026-11-23 19:16
+2026-11-16T20:22:34.096Z Logged in
+2026-11-16T20:22:38.741Z 2026-11-20: first competition slot null
+2026-11-16T20:22:39.993Z 2026-11-20: full page 1252ms; xhr: [{"url":"https://securepubads.g.doubleclick.net/pagead/ppub_config?ippd=members.brsgolf.com","status":200,"bytes":182,"ms":6},{"url":"https://members.brsgolf.com/craddockstown/tee-sheet/data/1/2026/11/20?_=1794860559297","status":200,"bytes":23377,"ms":303},{"url":"https://ep1.adtrafficquality.google/getconfig/sodar?sv=200&tid=gpt&tv=m202611120101&st=env&sjk=7233551886122134","status":200,"bytes":17990,"ms":39}]
+2026-11-16T20:22:39.994Z 2026-11-20: book/enter buttons found: [{"time":"08:04","index":0,"free":null,"taken":null,"comp":false},{"time":"08:12","index":1,"free":null,"taken":null,"comp":false},{"time":"08:20","index":2,"free":null,"taken":null,"comp":false},{"time":"08:28","index":3,"free":null,"taken":null,"comp":false},{"time":"08:36","index":4,"free":null,"taken":null,"comp":false},{"time":"08:44","index":5,"free":null,"taken":null,"comp":false},{"time":"08:52","index":6,"free":null,"taken":null,"comp":false},{"time":"09:00","index":7,"free":null,"taken":null,"comp":false},{"time":"09:08","index":8,"free":null,"taken":null,"comp":false},{"time":"09:16","index":9,"free":null,"taken":null,"comp":false}] (+44 more)
+2026-11-16T20:22:40.093Z 2026-11-20: clicking 15:16 to watch the requests
+2026-11-16T20:22:46.678Z 2026-11-20: click requests:
+1794860560675 GET document /craddockstown/bookings/book/MGMyZGQ2OTJmMDQ5OWY0ZjhlMjM3Y2U0NTNkMTM2OTk%253D/1/20261120/1516
+1794860561626   <- 200 /craddockstown/bookings/book/MGMyZGQ2OTJmMDQ5OWY0ZjhlMjM3Y2U0NTNkMTM2OTk%253D/1/20261120/1516 
+1794860561655 GET stylesheet /build/app.530e161f.css
+1794860561656 GET image /img/icons/mbm-icons_Bell-white.svg
+1794860561656 GET image /img/icons/rmm-icons_home-white.svg
+1794860561656 GET image /img/icons/rmm-icons_competitions-white.svg
+1794860561660 GET image /img/icons/rmm-icons_competition-purse-white.svg
+1794860561660 GET image /img/icons/rmm-icons_teesheet-white.svg
+1794860561660 GET image /img/icons/rmm-icons_bookings-white.svg
+1794860561661 GET image /img/icons/rmm-icons_buddy-list.svg
+1794860561661 GET image /img/icons/mbm-icons-avatar-white-01.svg
+1794860561662 GET image /img/icons/rmm-icons_feedback.svg
+1794860561662 GET image /img/icons/mbm-icons_info-circle.svg
+1794860561662 GET image /img/icons/mbm-icons_logout.svg
+1794860561662 GET image /img/brs-core-logo-20251117.svg
+1794860561662 GET script /build/runtime.7576e7bf.js
+1794860561663 GET script /build/app.854094c3.js
+1794860561663 GET script https://js.stripe.com/v3/
+1794860561841   <- 200 https://securepubads.g.doubleclick.net/pagead/ppub_config?ippd=members.brsgolf.com 
+1794860562495 GET xhr /craddockstown/booking-rules/casual/1/20261120?_=1794860562177
+1794860562762   <- 200 https://pagead2.googlesyndication.com/gampad/ads?pvsid=143793971765224&correlator=2918480181921194&eid=122881508%2C122882197%2C122882199%2C122882251%2C95404584%2C95409159&output=ldjh&gdfp_req=1&vrg=202611120101&ptt=17&impl=fif&npa=1&iu_parts=166474807%2CBRSGolf%2CPlayers&enc_prev_ius=%2F0%2F1%2F2&prev_iu_szs=970x90%7C728x90&ifi=1&dids=gpt-web-ad-booking-details&adfs=1102611066&sfv=1-0-45&sc=1&lrm=2&abxe=1&dt=1794860562138&lmt=1794860562&adxs=303&adys=24&biw=1280&bih=900&scr_x=0&scr_y=0&btvi=0&ucis=1&oid=2&u_his=5&u_h=900&u_w=1280&u_ah=900&u_aw=1280&u_cd=24&u_sd=1&dmc=2&bc=31&nvt=1&uach=WyJMaW51eCIsIjUuMTAuMjU1IiwieDg2IiwiIiwiMTMxLjAuNjc3OC4wIixudWxsLDAsbnVsbCwiNjQiLFtbIkhlYWRsZXNzQ2hyb21lIiwiMTMxLjAuNjc3OC4wIl0sWyJDaHJvbWl1bSIsIjEzMS4wLjY3NzguMCJdLFsiTm90X0EgQnJhbmQiLCIyNC4wLjAuMCJdXSwwXQ..&url=https%3A%2F%2Fmembers.brsgolf.com%2Fcraddockstown%2Fbookings%2Fbook%2FMGMyZGQ2OTJmMDQ5OWY0ZjhlMjM3Y2U0NTNkMTM2OTk%25253D%2F1%2F20261120%2F1516&ref=https%3A%2F%2Fmembers.brsgolf.com%2Fcraddockstown%2Ftee-sheet%2F1%2F2026%2F11%2F20&vis=1&psz=952x0&msz=970x0&fws=4&ohw=952&dlt=1794860561636&idt=167&cust_params=GolfClub%3Dcraddockstown&adks=525240694&frm=20&eo_id_str=ID%3D7c5dd7e27f201031%3AT%3D1794860551%3ART%3D1794860551%3AS%3DAA-AfjYPkWHd9hEGb9nGboefMSDM 
+1794860562819 GET document https://js.stripe.com/v3/controller-with-preconnect-3253db052327762f5533ab02a965e1bc.html
+1794860562933   <- 200 /craddockstown/booking-rules/casual/1/20261120?_=1794860562177 
+1794860563005 GET script https://js.stripe.com/v3/fingerprinted/js/shared-771fb6733d19c7f65736c976604b1bd9.js
+1794860563005 GET script https://js.stripe.com/v3/fingerprinted/js/controller-with-preconnect-7f138ac86a34497b5275b52cd998313f.js
+1794860563900 GET fetch https://js.stripe.com/v3/.deploy_status_henson.json
+1794860563900 GET script https://js.stripe.com/v3/fingerprinted/js/stripe-cookies-342e5a3c90613ebd49e7001b6682f9f8.js
+1794860563900 GET fetch https://js.stripe.com/v3/.deploy_status_henson.json
+1794860563917 GET script https://js.stripe.com/v3/fingerprinted/js/consumerSchema-83a22fb235852a7ced5e094bc777e12f.js
+1794860563986 GET document https://js.stripe.com/v3/m-outer-0edadf75b42c6ef7240c043f3272f3f9.html
+1794860564034 GET script https://js.stripe.com/v3/fingerprinted/js/m-outer-df5ee3b49f88025f22168cdfc5823764.js
+1794860564060 GET document https://m.stripe.network/inner.html
+1794860564098 GET script https://m.stripe.network/out-4.5.45.js
+1794860564304 POST xhr https://m.stripe.com/6
+1794860564687 POST fetch https://r.stripe.com/b
+1794860564917 POST fetch https://r.stripe.com/b
