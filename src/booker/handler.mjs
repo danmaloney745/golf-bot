@@ -62,23 +62,28 @@ export async function handler(event = {}) {
 
     if (mode === "recon") {
       // Look at both tee sheets. Only open a booking form when asked ({click: true}): BRS holds the slot while it's open.
-      for (const day of event.dates || [weekend.sat, weekend.sun]) {
+      for (const day of event.dates || (event.date ? [event.date] : [weekend.sat, weekend.sun])) {
         await page.goto(teeSheetUrl(config, day), { waitUntil: "domcontentloaded" });
         await snap(`tee-sheet-${day}`);
         const slots = await findSlots(page);
         log(`${day}: first competition slot ${await firstCompetitionTime(page)}`);
-        // Speed probe: raw HTML fetch vs full page load.
-        for (let i = 0; i < 3; i++) {
-          let t = Date.now();
-          const res = await context.request.get(teeSheetUrl(config, day));
-          const html = await res.text();
-          const raw = Date.now() - t;
-          t = Date.now();
-          await page.goto(teeSheetUrl(config, day), { waitUntil: "domcontentloaded" });
-          await page.locator(".size-marker").first().waitFor({ timeout: 10000 }).catch(() => {});
-          const full = Date.now() - t;
-          log(`${day}: probe ${i}: raw GET ${raw}ms (status ${res.status()}, ${html.length} bytes, size-markers ${(html.match(/size-marker/g) || []).length}, book links ${(html.match(/bookings\/book\//g) || []).length}); full page ${full}ms`);
-        }
+        // Network probe: which requests fill in the tee sheet, and how fast.
+        const seen = [];
+        const onResp = async (r) => {
+          const t = r.request().resourceType();
+          if (t !== "xhr" && t !== "fetch") return;
+          const body = await r.text().catch(() => "");
+          seen.push({ url: r.url(), status: r.status(), bytes: body.length, ms: Math.round(r.request().timing().responseEnd) });
+          if (/json/i.test(r.headers()["content-type"] || "") && body.length > 1000) {
+            await s3.send(new PutObjectCommand({ Bucket: process.env.RUNS_BUCKET, Key: `runs/${runId}/xhr-${day}-${seen.length}.json`, Body: body, ContentType: "application/json" })).catch(() => {});
+          }
+        };
+        page.on("response", onResp);
+        const t0 = Date.now();
+        await page.goto(teeSheetUrl(config, day), { waitUntil: "domcontentloaded" });
+        await page.locator(".size-marker").first().waitFor({ timeout: 10000 }).catch(() => {});
+        log(`${day}: full page ${Date.now() - t0}ms; xhr: ${JSON.stringify(seen)}`);
+        page.off("response", onResp);
         log(`${day}: book/enter buttons found: ${JSON.stringify(slots.slice(0, 10))}${slots.length > 10 ? ` (+${slots.length - 10} more)` : ""}`);
         if (event.click && slots.length) {
           await page.locator(`[data-bot-book="${slots[0].index}"]`).click();
