@@ -217,9 +217,12 @@ export class LockedError extends Error {
  */
 /**
  * Wait for the opening on BRS's clock and return the first sheet in which `isOpen` is true.
- * Poller 0 checks every 250ms until 0.3s before opening; then both pollers, staggered, check back
- * to back until 2s after; then every 150ms up to 20s after. Returns null if nothing opens by then.
+ * Poller 0 checks every 250ms from 3s before; from 1s before (BRS has been seen opening ~0.1-0.3s
+ * early on its own clock) both pollers, staggered, check back to back until 2s after; then every
+ * 150ms up to 20s after. Returns null if nothing opens by then.
  */
+const BURST_MS = 1000; // fast checks start this long before the opening on BRS's clock
+
 export function raceOpening(fetch, { opensAt, offset = 0, isOpen, pollers = 2, until: stopAt = Infinity }) {
   const opensLocal = opensAt - offset; // when BRS's clock reads the opening time, on our clock
   const until = Math.min(Math.max(opensLocal, Date.now()) + 20_000, stopAt);
@@ -229,9 +232,9 @@ export function raceOpening(fetch, { opensAt, offset = 0, isOpen, pollers = 2, u
     const poller = async (id) => {
       while (!done && Date.now() < until) {
         const toOpen = opensLocal - Date.now();
-        if (toOpen > 300) {
-          if (id > 0) { await sleep(Math.min(toOpen - 300, 250)); continue; }
-          if (toOpen > 2500) { await sleep(Math.min(toOpen - 2500, 1000)); continue; }
+        if (toOpen > BURST_MS) {
+          if (id > 0) { await sleep(Math.min(toOpen - BURST_MS, 250)); continue; }
+          if (toOpen > 3000) { await sleep(Math.min(toOpen - 3000, 1000)); continue; }
         } else if (id > 0 && requests === 0) {
           await sleep(40 * id); // stagger the second poller
         }
@@ -245,7 +248,7 @@ export function raceOpening(fetch, { opensAt, offset = 0, isOpen, pollers = 2, u
         }
         if (lastClosedSent == null || sent > lastClosedSent) lastClosedSent = sent;
         const now = opensLocal - Date.now();
-        if (now > 300) await sleep(250);
+        if (now > BURST_MS) await sleep(250);
         else if (now < -2000) await sleep(150);
         else await sleep(10); // back to back during the burst, with a breather
       }
