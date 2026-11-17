@@ -1,0 +1,6 @@
+2026-11-17T06:34:18.482Z Mode watch, target weekend 2026-11-28/2026-11-29, opens 2026-11-23 19:16
+2026-11-17T06:34:24.794Z Logged in
+2026-11-17T06:34:29.166Z Clock: BRS is 24ms ahead of AWS (±60ms; readings 16, 24, 11, 27, 35)
+2026-11-17T06:44:45.169Z Clock 20s before: BRS 23ms (±56ms; readings 5, 16, 48, 23, 39)
+2026-11-17T06:45:00.123Z 2026-11-24 entry open: seen by poller 0 after 8 requests; last closed check sent at -300ms (-125ms)
+2026-11-17T06:45:00.124Z Watched: 12:28 became bookable
