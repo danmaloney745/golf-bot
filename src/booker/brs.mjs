@@ -219,7 +219,9 @@ async function tryBook(page, config, dayIso, slot, names, { dryRun, snap, log, m
   }
   mark(`${slot.time}: form open`);
   if (dryRun) await snap(`${dayIso}-${slot.time.replace(":", "")}-form`);
+  mark(`${slot.time}: entering names`);
   const { already, added } = await fillPlayers(page, names);
+  mark(`${slot.time}: names entered`);
   log(`${dayIso} ${slot.time}: already on it: ${already.join(", ") || "nobody"}; adding: ${added.join(", ") || "nobody"}`);
   if (dryRun) { await snap("dry-run-ready"); return true; }
   // BRS labels the final button "Create Booking" (empty slot) or "Update Booking" (part-booked).
