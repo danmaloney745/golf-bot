@@ -1,0 +1,5 @@
+2026-11-23T20:18:52.388Z Mode recon, target weekend 2026-12-05/2026-12-06, opens 2026-11-30 19:16
+2026-11-23T20:18:57.556Z Logged in
+2026-11-23T20:19:01.092Z 2026-11-27: first competition slot null
+2026-11-23T20:19:01.887Z 2026-11-27: full page 795ms; xhr: [{"url":"https://securepubads.g.doubleclick.net/pagead/ppub_config?ippd=members.brsgolf.com","status":200,"bytes":176,"ms":14},{"url":"https://members.brsgolf.com/craddockstown/tee-sheet/data/1/2026/11/27?_=1795465141270","status":200,"bytes":20218,"ms":220},{"url":"https://ep1.adtrafficquality.google/getconfig/sodar?sv=200&tid=gpt&tv=m202611120201&st=env&sjk=7753777094012945","status":200,"bytes":18002,"ms":20}]
+2026-11-23T20:19:01.887Z 2026-11-27: book/enter buttons found: []
