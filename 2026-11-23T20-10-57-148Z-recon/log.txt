@@ -1,0 +1,5 @@
+2026-11-23T20:10:57.149Z Mode recon, target weekend 2026-12-05/2026-12-06, opens 2026-11-30 19:16
+2026-11-23T20:11:01.949Z Logged in
+2026-11-23T20:11:06.096Z 2026-11-26: first competition slot null
+2026-11-23T20:11:06.914Z 2026-11-26: full page 817ms; xhr: [{"url":"https://securepubads.g.doubleclick.net/pagead/ppub_config?ippd=members.brsgolf.com","status":200,"bytes":176,"ms":12},{"url":"https://members.brsgolf.com/craddockstown/tee-sheet/data/1/2026/11/26?_=1795464666311","status":200,"bytes":23931,"ms":223}]
+2026-11-23T20:11:06.914Z 2026-11-26: book/enter buttons found: [{"time":"09:48","index":0,"free":2,"taken":1,"comp":false},{"time":"09:56","index":1,"free":3,"taken":0,"comp":false},{"time":"10:04","index":2,"free":3,"taken":0,"comp":false},{"time":"10:12","index":3,"free":3,"taken":0,"comp":false},{"time":"10:20","index":4,"free":3,"taken":0,"comp":false},{"time":"10:28","index":5,"free":3,"taken":0,"comp":false},{"time":"10:36","index":6,"free":3,"taken":0,"comp":false},{"time":"10:44","index":7,"free":3,"taken":0,"comp":false},{"time":"10:52","index":8,"free":3,"taken":0,"comp":false},{"time":"11:00","index":9,"free":3,"taken":0,"comp":false}]
