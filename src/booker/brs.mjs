@@ -41,10 +41,46 @@ export function parseSheet(data, dayIso) {
       free: people.length ? people.filter((p) => p && p.name == null).length : (comp ? compCap : 4),
       taken: people.filter((p) => p && p.name && String(p.name).toLowerCase() !== "x").length,
       reason: t.reason || null,
+      detail: t.detail || null,
     });
   }
   if (!firstComp) firstComp = slots.filter((s) => s.comp).map((s) => s.time).sort()[0] || null;
   return { slots, firstComp };
+}
+
+/** One line on what BRS says about each slot in the window, e.g. "08:12 open(3) | 08:20 Unavailable(locked until 19:20:38)". */
+export function describeWindow(sheet, config) {
+  const lo = toMinutes(config.earliestTeeTime), hi = toMinutes(config.latestTeeTime);
+  const rows = sheet.slots.filter((s) => (!config.competitionsOnly || s.comp) && toMinutes(s.time) >= lo && toMinutes(s.time) <= hi);
+  if (!rows.length) return "no slots in window";
+  return rows.map((s) => {
+    if (s.bookable) return `${s.time} open(${s.free})`;
+    const why = (s.detail || "").replace(/^This Tee Time has been /, "").replace(/ by another user/, "").replace(/\.$/, "").slice(0, 60);
+    return `${s.time} ${s.reason || "closed"}${why ? `(${why})` : ""}`;
+  }).join(" | ");
+}
+
+/**
+ * Wrap a sheet fetch so every check is accounted for: errors and slow replies are logged with their
+ * timing, and the window is logged whenever what BRS says about it changes.
+ */
+export function loggedFetch(fetch, { config, log, rel }) {
+  let last = null, errors = 0;
+  return async () => {
+    const t0 = Date.now();
+    try {
+      const sheet = await fetch();
+      const ms = Date.now() - t0;
+      const now = describeWindow(sheet, config);
+      if (now !== last) { log(`check sent ${rel(t0)}, ${ms}ms: ${now}`); last = now; }
+      else if (ms > 1500) log(`check sent ${rel(t0)} was slow: ${ms}ms`);
+      return sheet;
+    } catch (e) {
+      errors++;
+      if (errors <= 20 || errors % 10 === 0) log(`check sent ${rel(t0)} FAILED after ${Date.now() - t0}ms: ${e.message}${errors > 1 ? ` (${errors} failures so far)` : ""}`);
+      throw e;
+    }
+  };
 }
 
 /** Fetch the feed with the logged-in session's cookies. Far quicker than rendering the sheet. */
@@ -282,7 +318,8 @@ export async function bookDay(page, config, dayIso, partners, { dryRun, watchOnl
   };
   // Race the opening on BRS's clock. Locally, mark() times are on our clock relative to the opening
   // on BRS's clock, so +0ms is the true opening moment.
-  const fetch = () => fetchSheet(request, config, dayIso);
+  const rel = (t) => { const d = t - (opensAt - offset); return `${d >= 0 ? "+" : ""}${d}ms`; };
+  const fetch = loggedFetch(() => fetchSheet(request, config, dayIso), { config, log: (m) => log(`${dayIso} ${m}`), rel });
   const markAt = (m, t) => log(`${dayIso} ${m} (${t - (opensAt - offset) >= 0 ? "+" : ""}${t - (opensAt - offset)}ms)`);
   const raced = await raceOpening(fetch, { opensAt, offset, until: deadline, isOpen: (sh) => fits(targets(sh)).length > 0 || (Date.now() >= twoBallFrom && targets(sh).length > 0) });
   if (raced) {

@@ -8,7 +8,7 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { getWeekend, saveResult } from "../lib/store.mjs";
 import { targetWeekend, dublinInstant, sleep } from "../lib/time.mjs";
 import { playersFor } from "../lib/slots.mjs";
-import { login, bookDay, findSlots, firstCompetitionTime, teeSheetUrl, sheetDataUrl } from "./brs.mjs";
+import { login, bookDay, findSlots, firstCompetitionTime, teeSheetUrl, sheetDataUrl, fetchSheet, describeWindow } from "./brs.mjs";
 import { measureOffset, dateFetcher } from "../lib/clock.mjs";
 
 const config = JSON.parse(readFileSync(new URL("../config.json", import.meta.url), "utf8"));
@@ -123,6 +123,25 @@ export async function handler(event = {}, lambdaContext = null) {
           await snap(`booking-form-${day}`);
         }
       }
+      return result;
+    }
+
+    // Probe (dry-run only): does holding a booking form open on one day change what BRS tells this
+    // account about another day? Logs day B, opens a form on day A (books nothing), logs day B again.
+    if (mode === "dry-run" && event.probe) {
+      const { hold, watch } = event.probe;
+      const probeConfig = { ...config, competitionsOnly: false, emptyOnly: true, earliestTeeTime: event.probe.from || "00:00", latestTeeTime: event.probe.to || "23:59" };
+      const see = async (label) => {
+        const t0 = Date.now();
+        try { log(`${label}: ${watch} (${Date.now() - t0}ms) ${describeWindow(await fetchSheet(context.request, probeConfig, watch), probeConfig)}`); }
+        catch (e) { log(`${label}: ${watch} check failed: ${e.message}`); }
+      };
+      await see("Before");
+      const partners = Object.values(config.players).filter((p) => !p.isBookingAccount).map((p) => p.name);
+      const held = await bookDay(page, { ...probeConfig, retryWindowSeconds: 30 }, hold, partners, { dryRun: true, snap, log });
+      log(`Holding a form on ${hold} ${held.time || "(none opened)"}`);
+      for (let i = 0; i < 4; i++) { await see(`While holding (${i + 1})`); await sleep(3000); }
+      Object.assign(result, { probe: event.probe, held: held.time });
       return result;
     }
 
