@@ -42,20 +42,24 @@ export async function handler(event = {}) {
   // Speed: skip adverts, analytics, fonts and images. BRS's own pages, scripts and styles still load
   // (styles decide which duplicate player cells are visible), and Stripe in case entry needs payment.
   if (mode !== "recon") {
-    await context.route("**/*", (route) => {
-      const req = route.request();
-      const host = new URL(req.url()).hostname;
-      const ours = host === "members.brsgolf.com" || /(^|\.)stripe\.(com|network)$/.test(host);
-      if (!ours || ["image", "media", "font"].includes(req.resourceType())) return route.abort();
-      return route.continue();
-    });
+    // Only third-party requests and BRS's own images/fonts are intercepted. BRS's pages, scripts,
+    // styles and data (including the booking link that locks a slot) go straight through untouched.
+    await context.route(/^https?:\/\/(?!members\.brsgolf\.com\/|[^/]*\.stripe\.(com|network)\/)/, (route) => route.abort());
+    await context.route(/^https:\/\/members\.brsgolf\.com\/[^?#]*\.(png|jpe?g|gif|webp|svg|ico|woff2?|ttf|otf|mp4)([?#]|$)/i, (route) => route.abort());
   }
   const newTab = async () => { const p = await context.newPage(); p.setDefaultTimeout(15000); return p; };
   const page = await newTab();
 
   let shot = 0;
-  const snapFor = (pg) => async (label) => {
+  const uploads = [];
+  // quick: save just the page's HTML and upload it in the background, so nothing waits on it.
+  const snapFor = (pg) => async (label, { quick = false } = {}) => {
     const key = `runs/${runId}/${String(++shot).padStart(2, "0")}-${label}`;
+    if (quick) {
+      const html = await pg.content().catch(() => "");
+      uploads.push(s3.send(new PutObjectCommand({ Bucket: process.env.RUNS_BUCKET, Key: `${key}.html`, Body: html, ContentType: "text/html" })).catch(() => {}));
+      return;
+    }
     const png = await pg.screenshot({ fullPage: true }).catch(() => null);
     const html = await pg.content().catch(() => "");
     await Promise.all([
@@ -207,6 +211,7 @@ export async function handler(event = {}) {
     result.error = e.message;
     throw e;
   } finally {
+    await Promise.allSettled(uploads);
     await browser.close().catch(() => {});
     await s3.send(new PutObjectCommand({ Bucket: process.env.RUNS_BUCKET, Key: `runs/${runId}/log.txt`, Body: lines.join("\n"), ContentType: "text/plain" })).catch(() => {});
     if (mode !== "recon" && !event.date) await saveResult(weekend.sat, { runId, mode, sat: result.sat, sun: result.sun, satMissing: result.satMissing || [], sunMissing: result.sunMissing || [], error: result.error || null, at: new Date().toISOString() }).catch((e) => console.error("saveResult", e));

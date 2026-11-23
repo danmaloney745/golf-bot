@@ -165,8 +165,8 @@ async function tryBook(page, config, dayIso, slot, names, { dryRun, snap, log, m
     page.waitForURL(/\/tee-sheet\//, { timeout: 10000 }).then(() => locked.first().waitFor({ state: "attached", timeout: 3000 }).catch(() => {})),
   ]).catch(() => {});
   if (await locked.count()) {
+    // No need to close the popup: the next step opens another link straight away.
     const text = await locked.first().innerText().catch(() => "");
-    await page.locator(".swal2-confirm").first().click({ timeout: 2000 }).catch(() => {});
     throw new LockedError(text);
   }
   if (!(await form.count())) {
@@ -329,7 +329,7 @@ export async function bookDay(page, config, dayIso, partners, { dryRun, watchOnl
         }
         retryAt.set(slot.time, Infinity);
         log(`${dayIso} ${slot.time} failed: ${e.message}.`);
-        await snap(`${dayIso}-${slot.time.replace(":", "")}-failed`);
+        await snap(`${dayIso}-${slot.time.replace(":", "")}-failed`, { quick: true });
         break;
       }
     }
