@@ -189,7 +189,7 @@ export async function handler(event = {}, lambdaContext = null) {
 
     // Start polling the sheet 2.5s early so the bot sees the slots the moment BRS opens them.
     if (!event.now) await sleep(opens - offset - Date.now() - 3000);
-    const settled = await Promise.allSettled(jobs.map(run));
+    const settled = await Promise.allSettled(jobs.map((j) => run(j)));
     const record = (j, v) => {
       result[j.day] = v.time ? (v.unconfirmed ? `${v.time}?` : v.time) : null;
       result[`${j.day}Missing`] = v.time ? v.dropped : [];
