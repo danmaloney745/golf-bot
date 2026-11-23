@@ -1,0 +1,13 @@
+2026-11-23T20:09:48.353Z Mode book, target weekend 2026-12-05/2026-12-06, opens 2026-11-30 19:16
+2026-11-23T20:09:52.271Z Logged in
+2026-11-23T20:09:52.272Z Test book on 2026-11-26 15:00-16:00, casual allowed, with Mark Armstrong, Hugh Crowther
+2026-11-23T20:09:52.513Z 2026-11-26 check sent +0ms, 241ms: 15:00 open(4) | 15:08 open(4) | 15:16 open(4)
+2026-11-23T20:09:52.514Z 2026-11-26 entry open: seen by poller 0 after 2 requests; last closed check sent at n/a (+0ms)
+2026-11-23T20:09:52.514Z 2026-11-26 15:00: opening booking link (+242ms)
+2026-11-23T20:09:53.832Z 2026-11-26 15:00: form open (+1560ms)
+2026-11-23T20:09:53.833Z 2026-11-26 15:00: entering names (+1561ms)
+2026-11-23T20:09:53.888Z 2026-11-26 15:00: names entered (+1616ms)
+2026-11-23T20:09:53.888Z 2026-11-26 15:00: already on it: nobody; adding: Daniel Maloney, Mark Armstrong, Hugh Crowther
+2026-11-23T20:09:56.306Z 2026-11-26 15:00: submitted (+4034ms)
+2026-11-23T20:09:56.749Z 2026-11-26 15:00: confirmed (+4477ms)
+2026-11-23T20:09:58.089Z Booked 15:00
