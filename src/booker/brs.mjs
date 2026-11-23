@@ -308,13 +308,13 @@ export class LockedError extends Error {
  */
 /**
  * Wait for the opening on BRS's clock and return the first sheet in which `isOpen` is true.
- * Poller 0 checks every 250ms from 3s before; from 1s before (BRS has been seen opening ~0.1-0.3s
- * early on its own clock) both pollers, staggered, check back to back until 2s after; then every
- * 150ms up to 20s after. Returns null if nothing opens by then.
+ * One poller per day (two on 23 Nov may have got Sunday's checks throttled in the rush): every 250ms
+ * from 3s before; back to back from 1s before (BRS has opened ~0.1-0.3s early) until 2s after; then
+ * every 150ms up to 20s after. Returns null if nothing opens by then.
  */
 const BURST_MS = 1000; // fast checks start this long before the opening on BRS's clock
 
-export function raceOpening(fetch, { opensAt, offset = 0, isOpen, pollers = 2, until: stopAt = Infinity }) {
+export function raceOpening(fetch, { opensAt, offset = 0, isOpen, pollers = 1, until: stopAt = Infinity }) {
   const opensLocal = opensAt - offset; // when BRS's clock reads the opening time, on our clock
   const until = Math.min(Math.max(opensLocal, Date.now()) + 20_000, stopAt);
   return new Promise((resolve) => {
