@@ -31,11 +31,17 @@ function fakePage(rows, { form = ["Maloney, Daniel"], picked = [], firstComp = n
   const refused = () => pressed && refusedAtSubmit.includes(current);
   const silent = () => pressed && silentAtSubmit.includes(current);
   const isLocked = () => (current && lockedTimes.includes(current)) || refused();
-  const fields = [0, 1, 2, 3].map((i) => ({
-    evaluate: async () => [!!form[i], form[i] || ""],
-    locator: () => ({ allTextContents: async () => ["Start typing to find player...", ...MEMBERS] }),
-    selectOption: async ({ label }) => { picked.push([i + 1, label]); },
-  }));
+  // Player boxes as BRS renders them: <select> with every member as an option; taken spaces disabled.
+  const options = [{ value: "", textContent: "Start typing to find player..." }, ...MEMBERS.map((m, j) => ({ value: String(100 + j), textContent: m }))];
+  const selects = () => [0, 1, 2, 3].map((i) => {
+    const pre = form[i] ? options.find((o) => o.textContent === form[i]) : null;
+    return {
+      id: `member_booking_form_player_${i + 1}`, disabled: !!pre, value: pre ? pre.value : "", options,
+      get selectedOptions() { return options.filter((o) => o.value && o.value === this.value); },
+      dispatchEvent(ev) { if (ev.type === "change") picked.push([i + 1, this.selectedOptions[0].textContent]); return true; },
+    };
+  });
+  const fields = [];
   const formLoc = {
     first() { return this; },
     or() { return { first() { return this; }, waitFor: async () => {} }; },
@@ -59,6 +65,7 @@ function fakePage(rows, { form = ["Maloney, Daniel"], picked = [], firstComp = n
     waitForURL: () => new Promise(() => {}),
     url: () => "https://x/c/bookings/book/...",
     waitForLoadState: async () => {},
+    evaluate: async (fn, arg) => { const doc = { querySelectorAll: () => selects() }; globalThis.document = doc; try { return fn(arg); } finally { delete globalThis.document; } },
     locator: (sel) => (sel.startsWith("select[id^=") ? formLoc : sel === "body" ? { innerText: async () => confirmedText() } : lockLoc),
   };
 }
@@ -108,8 +115,30 @@ test("emptyOnly skips slots someone is already on", async () => {
 
 test("skips the competition's first slot and takes the next", async () => {
   const rows = ["07:56", "08:04", "08:12"].map((time) => ({ time, comp: true, people: empty }));
-  const r = await bookDay(fakePage(rows, { firstComp: "07:56" }), { ...config, skipFirstCompetitionSlot: true }, "2026-11-21", partners, opts);
+  const r = await bookDay(fakePage(rows, { firstComp: "07:56" }), { ...config, firstSlot: "skip" }, "2026-11-21", partners, opts);
   assert.equal(r.time, "08:04");
+});
+
+test("first slot as fallback: tried only after the rest of the window", async () => {
+  const opened = [];
+  const rows = ["08:04", "08:12", "08:20"].map((time) => ({ time, comp: true, people: empty }));
+  const r = await bookDay(fakePage(rows, { lockedTimes: ["08:12", "08:20"], opened }), { ...config, firstSlot: "fallback" }, "2026-11-28", partners, opts);
+  assert.equal(r.time, "08:04");
+  assert.deepEqual(opened, ["08:12", "08:20", "08:04"]);
+});
+
+test("first slot as target: goes for it first", async () => {
+  const opened = [];
+  const rows = ["08:04", "08:12"].map((time) => ({ time, comp: true, people: empty }));
+  const r = await bookDay(fakePage(rows, { opened }), { ...config, firstSlot: "target" }, "2026-11-28", partners, opts);
+  assert.equal(r.time, "08:04");
+  assert.deepEqual(opened, ["08:04"]);
+});
+
+test("first slot is the first real tee time, not the competition's banner time", () => {
+  const data = feed([{ time: "08:12", comp: true, people: empty }, { time: "08:20", comp: true, people: empty }], null);
+  data.times["07:56"] = { competition_start: { start_time: "07:56", num_bookable_players: 3 } }; // banner only, as on Sun 29 Nov
+  assert.equal(parseSheet(data, "2026-11-29").firstComp, "08:12");
 });
 
 test("a slot locked by another member is skipped straight away", async () => {

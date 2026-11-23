@@ -20,6 +20,6 @@
       "name": "Hugh Crowther"
     }
   },
-  "skipFirstCompetitionSlot": true,
-  "twoBallAfterSeconds": 60
+  "twoBallAfterSeconds": 60,
+  "firstSlot": "fallback"
 }

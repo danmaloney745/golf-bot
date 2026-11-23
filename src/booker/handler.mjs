@@ -179,6 +179,13 @@ export async function handler(event = {}, lambdaContext = null) {
       return result;
     }
 
+    // Read BRS's clock early too (about 19:12, when BRS is quiet) and keep the sharper reading:
+    // at 19:15:35 on 23 Nov busy replies made it ±128ms, against ±50ms when quiet.
+    let earlySync = null;
+    if (mode === "book" && !event.now) {
+      earlySync = await measureOffset(dateFetcher(context.request, teeSheetUrl(config, weekend.sat))).catch(() => null);
+      if (earlySync) log(`Clock (early): BRS is ${earlySync.offset}ms ${earlySync.offset >= 0 ? "ahead of" : "behind"} AWS (±${earlySync.error}ms; readings ${earlySync.readings.join(", ")})`);
+    }
     if (!event.now) await sleep(opens - Date.now() - 30_000);
     const everyone = Object.fromEntries(Object.keys(config.players).map((k) => [k, true]));
     const availability = rehearse ? { sat: everyone, sun: everyone } : (await getWeekend(weekend.sat)) || { sat: {}, sun: {} };
@@ -200,9 +207,12 @@ export async function handler(event = {}, lambdaContext = null) {
     // Sync to BRS's clock: it decides the opening moment, not ours.
     let offset = 0;
     if (!event.now && jobs.length) {
-      const sync = await measureOffset(dateFetcher(context.request, teeSheetUrl(config, days[jobs[0].day])));
+      const late = await measureOffset(dateFetcher(context.request, teeSheetUrl(config, days[jobs[0].day])));
+      log(`Clock (late): BRS is ${late.offset}ms ${late.offset >= 0 ? "ahead of" : "behind"} AWS (±${late.error}ms; readings ${late.readings.join(", ")})`);
+      const usable = [earlySync, late].filter((x) => x && x.readings.length && x.error != null);
+      const sync = usable.sort((a, b) => a.error - b.error)[0] || late;
       offset = sync.offset;
-      log(`Clock: BRS is ${sync.offset}ms ${sync.offset >= 0 ? "ahead of" : "behind"} AWS (±${sync.error}ms; readings ${sync.readings.join(", ")})`);
+      log(`Clock: using ${sync === earlySync ? "early" : "late"} reading, BRS ${offset}ms (±${sync.error}ms)`);
     }
     const run = (j, cfg = dayConfig) => bookDay(j.tab, cfg, days[j.day], j.partners, { dryRun: mode === "dry-run", snap: j.snap, log: (m) => log(`[${j.day}] ${m}`), opensAt, offset });
 

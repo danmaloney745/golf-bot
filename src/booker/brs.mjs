@@ -29,8 +29,6 @@ export function parseSheet(data, dayIso) {
     const t = v?.tee_time;
     if (!t || !/^\d{2}:\d{2}$/.test(time)) continue;
     const comp = /competition/i.test(t.reservation_type || "");
-    const start = v.competition_start?.start_time;
-    if (start && (!firstComp || start < firstComp)) firstComp = start;
     const people = Array.isArray(t.participants) ? t.participants : [];
     slots.push({
       time, comp,
@@ -44,7 +42,9 @@ export function parseSheet(data, dayIso) {
       detail: t.detail || null,
     });
   }
-  if (!firstComp) firstComp = slots.filter((s) => s.comp).map((s) => s.time).sort()[0] || null;
+  // The first real competition tee time. (The competition's own start time can be a banner with no
+  // tee time behind it: on Sun 29 Nov it said 07:56 but the first slot was 08:12, after sunrise.)
+  firstComp = slots.filter((s) => s.comp).map((s) => s.time).sort()[0] || null;
   return { slots, firstComp };
 }
 
@@ -169,24 +169,31 @@ export async function findSlots(page) {
  * Everyone in `names` who isn't already on the booking goes into the empty spaces, in order.
  */
 async function fillPlayers(page, names) {
-  const fields = page.locator('select[id^="member_booking_form_player_"]');
-  await fields.first().waitFor({ state: "attached", timeout: 10000 });
-  const spaces = [];
-  for (let i = 0; i < (await fields.count()); i++) {
-    const f = fields.nth(i);
-    const [disabled, current] = await f.evaluate((el) => [el.disabled, el.value ? (el.selectedOptions[0]?.textContent || "").trim() : ""]);
-    spaces.push({ f, disabled, current });
-  }
-  const onIt = spaces.map((s) => s.current).filter(Boolean);
-  const todo = names.filter((n) => !onIt.some((c) => nameMatches(c, n)));
-  const empty = spaces.filter((s) => !s.disabled && !s.current);
-  if (empty.length < todo.length) throw new Error(`Only ${empty.length} free space(s) for ${todo.join(", ")}`);
-  for (let i = 0; i < todo.length; i++) {
-    const label = (await empty[i].f.locator("option").allTextContents()).find((o) => nameMatches(o, todo[i]));
-    if (!label) throw new Error(`${todo[i]} isn't in the player list`);
-    await empty[i].f.selectOption({ label: label.trim() }, { force: true });
-  }
-  return { already: onIt, added: todo };
+  // One step inside the page: read every player box, pick each name's option, set it and fire the
+  // events BRS's player picker listens for. Doing this box by box from outside took ~1.5s on 23 Nov.
+  await page.locator('select[id^="member_booking_form_player_"]').first().waitFor({ state: "attached", timeout: 10000 });
+  const r = await page.evaluate((names) => {
+    const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z' ]/g, " ");
+    const matches = (label, full) => norm(full).split(/\s+/).filter(Boolean).every((w) => new RegExp(`\\b${w}\\b`).test(norm(label)));
+    const spaces = [...document.querySelectorAll('select[id^="member_booking_form_player_"]')].map((el) => ({
+      el, disabled: el.disabled, current: el.value ? String(el.selectedOptions[0]?.textContent || "").trim() : "",
+    }));
+    const already = spaces.map((s) => s.current).filter(Boolean);
+    const todo = names.filter((n) => !already.some((c) => matches(c, n)));
+    const empty = spaces.filter((s) => !s.disabled && !s.current);
+    if (empty.length < todo.length) return { error: `Only ${empty.length} free space(s) for ${todo.join(", ")}` };
+    for (let i = 0; i < todo.length; i++) {
+      const el = empty[i].el;
+      const opt = [...el.options].find((o) => o.value && matches(o.textContent, todo[i]));
+      if (!opt) return { error: `${todo[i]} isn't in the player list` };
+      el.value = opt.value;
+      el.dispatchEvent(new Event("input", { bubbles: true }));
+      el.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    return { already, added: todo };
+  }, names);
+  if (r.error) throw new Error(r.error);
+  return r;
 }
 
 async function tryBook(page, config, dayIso, slot, names, { dryRun, snap, log, mark }) {
@@ -325,11 +332,14 @@ export async function bookDay(page, config, dayIso, partners, { dryRun, watchOnl
   const ready = (s) => (retryAt.get(s.time) ?? 0) <= Date.now();
   const fits = (open) => orderSlots(open, config.earliestTeeTime, config.latestTeeTime, group.length + 1);
   const mark = (m) => log(`${dayIso} ${m} (${Date.now() - (opensAt - offset) >= 0 ? "+" : ""}${Date.now() - (opensAt - offset)}ms)`);
-  const targets = (sheet) => {
-    // Skip the competition's first tee time: everyone goes for it, so aim for the one after.
-    const firstComp = config.skipFirstCompetitionSlot ? sheet.firstComp : null;
-    return sheet.slots.filter((s) => s.bookable && (!config.competitionsOnly || s.comp) && (!config.emptyOnly || !s.taken)
-      && (!firstComp || toMinutes(s.time) > toMinutes(firstComp)) && ready(s));
+  // The competition's first tee time: "skip" never tries it, "fallback" tries it after every other
+  // slot in the window, "target" goes for it first.
+  const firstSlot = config.firstSlot || (config.skipFirstCompetitionSlot ? "skip" : "target");
+  const targets = (sheet) => sheet.slots.filter((s) => s.bookable && (!config.competitionsOnly || s.comp) && (!config.emptyOnly || !s.taken)
+    && !(firstSlot === "skip" && sheet.firstComp && toMinutes(s.time) <= toMinutes(sheet.firstComp)) && ready(s));
+  const prioritise = (list, sheet) => {
+    if (firstSlot !== "fallback" || !sheet.firstComp) return list;
+    return [...list.filter((s) => s.time !== sheet.firstComp), ...list.filter((s) => s.time === sheet.firstComp)];
   };
   // Race the opening on BRS's clock. Locally, mark() times are on our clock relative to the opening
   // on BRS's clock, so +0ms is the true opening moment.
@@ -338,9 +348,9 @@ export async function bookDay(page, config, dayIso, partners, { dryRun, watchOnl
   const markAt = (m, t) => log(`${dayIso} ${m} (${t - (opensAt - offset) >= 0 ? "+" : ""}${t - (opensAt - offset)}ms)`);
   const raced = await raceOpening(fetch, { opensAt, offset, until: deadline, isOpen: (sh) => fits(targets(sh)).length > 0 || (Date.now() >= twoBallFrom && targets(sh).length > 0) });
   if (raced) {
-    if (raced.sheet.firstComp && config.skipFirstCompetitionSlot) log(`${dayIso}: first competition slot is ${raced.sheet.firstComp}; aiming for the next one`);
+    if (raced.sheet.firstComp && config.competitionsOnly) log(`${dayIso}: first competition slot is ${raced.sheet.firstComp}; ${{ skip: "skipping it", fallback: "trying it last", target: "aiming for it" }[firstSlot]}`);
     markAt(`entry open: seen by poller ${raced.poller} after ${raced.requests} requests; last closed check sent at ${raced.lastClosedSent == null ? "n/a" : (raced.lastClosedSent - (opensAt - offset)) + "ms"}`, raced.sent);
-    if (watchOnly) return { time: fits(targets(raced.sheet))[0]?.time || targets(raced.sheet)[0]?.time || null, watched: true, sent: raced.sent, lastClosedSent: raced.lastClosedSent };
+    if (watchOnly) return { time: prioritise(fits(targets(raced.sheet)), raced.sheet)[0]?.time || targets(raced.sheet)[0]?.time || null, watched: true, sent: raced.sent, lastClosedSent: raced.lastClosedSent };
   } else {
     log(`${dayIso}: nothing opened within 20s of the opening time`);
     if (watchOnly) return { time: null, watched: true };
@@ -354,12 +364,12 @@ export async function bookDay(page, config, dayIso, partners, { dryRun, watchOnl
       catch (e) { if (e.message !== lastErr) log(`${dayIso}: ${e.message}`); lastErr = e.message; await sleep(300); continue; }
     }
     const open = targets(sheet);
-    let slots = fits(open);
+    let slots = prioritise(fits(open), sheet);
     // Only settle for a two-ball once a three-ball has had a fair chance (locks run out after 3 minutes).
     while (!slots.length && open.length && group.length > 1 && Date.now() >= twoBallFrom) {
       dropped.unshift(group.pop());
       log(`${dayIso}: no slot with room for everyone; entering ${group.length + 1} without ${dropped[0]}`);
-      slots = fits(open);
+      slots = prioritise(fits(open), sheet);
     }
     if (!slots.length) {
       // Every 3s while locks run out (the race above already covered the opening itself).
