@@ -11,13 +11,16 @@
   "players": {
     "dan": {
       "name": "Daniel Maloney",
-      "isBookingAccount": true
+      "isBookingAccount": true,
+      "memberId": 3585
     },
     "mark": {
-      "name": "Mark Armstrong"
+      "name": "Mark Armstrong",
+      "memberId": 3589
     },
     "hugh": {
-      "name": "Hugh Crowther"
+      "name": "Hugh Crowther",
+      "memberId": 3593
     }
   },
   "twoBallAfterSeconds": 60,

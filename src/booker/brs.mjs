@@ -168,30 +168,44 @@ export async function findSlots(page) {
  * taken (by you, or by someone else on a part-booked slot) are disabled with a member selected.
  * Everyone in `names` who isn't already on the booking goes into the empty spaces, in order.
  */
-async function fillPlayers(page, names) {
-  // One step inside the page: read every player box, pick each name's option, set it and fire the
-  // events BRS's player picker listens for. Doing this box by box from outside took ~1.5s on 23 Nov.
+/**
+ * Put the players on BRS's entry form and (unless `submit` is false) send it, in one step inside the page.
+ * When the page first arrives, each player box is a plain <select> of every member; a second or two later
+ * BRS's scripts rebuild them into search boxes, wiping anything set earlier (23 Nov). So: set each box to
+ * the member's number (adding the option if the rebuilt box lacks it), tell the picker it changed, check
+ * every player is on the form, and send it as Create Booking does. Returns what was on it and what was added.
+ */
+async function enterPlayers(page, people, { submit }) {
   await page.locator('select[id^="member_booking_form_player_"]').first().waitFor({ state: "attached", timeout: 10000 });
-  const r = await page.evaluate((names) => {
-    const norm = (s) => String(s || "").toLowerCase().replace(/[^a-z' ]/g, " ");
-    const matches = (label, full) => norm(full).split(/\s+/).filter(Boolean).every((w) => new RegExp(`\\b${w}\\b`).test(norm(label)));
-    const spaces = [...document.querySelectorAll('select[id^="member_booking_form_player_"]')].map((el) => ({
-      el, disabled: el.disabled, current: el.value ? String(el.selectedOptions[0]?.textContent || "").trim() : "",
-    }));
-    const already = spaces.map((s) => s.current).filter(Boolean);
-    const todo = names.filter((n) => !already.some((c) => matches(c, n)));
-    const empty = spaces.filter((s) => !s.disabled && !s.current);
-    if (empty.length < todo.length) return { error: `Only ${empty.length} free space(s) for ${todo.join(", ")}` };
-    for (let i = 0; i < todo.length; i++) {
-      const el = empty[i].el;
-      const opt = [...el.options].find((o) => o.value && matches(o.textContent, todo[i]));
-      if (!opt) return { error: `${todo[i]} isn't in the player list` };
-      el.value = opt.value;
-      el.dispatchEvent(new Event("input", { bubbles: true }));
-      el.dispatchEvent(new Event("change", { bubbles: true }));
+  const r = await page.evaluate(({ people, submit }) => {
+    const form = document.querySelector('form[name="member_booking_form"]');
+    if (!form) return { error: "No entry form on the page" };
+    const boxes = [...form.querySelectorAll('select[id^="member_booking_form_player_"]')];
+    const label = (el) => (el.value ? String(el.selectedOptions[0]?.textContent || "").trim() : "");
+    const already = boxes.map(label).filter(Boolean);
+    const onForm = (p) => boxes.some((el) => el.value === String(p.id));
+    const todo = people.filter((p) => !onForm(p));
+    const empty = boxes.filter((el) => !el.disabled && !el.value);
+    if (empty.length < todo.length) return { error: `Only ${empty.length} free space(s) for ${todo.map((p) => p.name).join(", ")}` };
+    todo.forEach((p, i) => {
+      const el = empty[i];
+      let opt = [...el.options].find((o) => o.value === String(p.id));
+      if (!opt) { opt = new Option(p.label, String(p.id), true, true); el.appendChild(opt); }
+      el.value = String(p.id);
+      opt.selected = true;
+      if (window.jQuery) window.jQuery(el).trigger("change");
+      else el.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    const missing = people.filter((p) => !onForm(p)).map((p) => p.name);
+    if (missing.length) return { error: `Not on the form after entering: ${missing.join(", ")}` };
+    const ids = boxes.map((el) => el.value).filter(Boolean);
+    if (submit) {
+      const button = document.getElementById("member_booking_form_confirm_booking");
+      if (!button) return { error: "No Create Booking button on the form" };
+      form.requestSubmit(button);
     }
-    return { already, added: todo };
-  }, names);
+    return { already, added: todo.map((p) => p.name), ids, scriptsReady: boxes.every((el) => el.classList.contains("select2-hidden-accessible")) };
+  }, { people, submit });
   if (r.error) throw new Error(r.error);
   return r;
 }
@@ -219,17 +233,20 @@ async function tryBook(page, config, dayIso, slot, names, { dryRun, snap, log, m
   }
   mark(`${slot.time}: form open`);
   if (dryRun) await snap(`${dayIso}-${slot.time.replace(":", "")}-form`);
-  mark(`${slot.time}: entering names`);
-  const { already, added } = await fillPlayers(page, names);
-  mark(`${slot.time}: names entered`);
-  log(`${dayIso} ${slot.time}: already on it: ${already.join(", ") || "nobody"}; adding: ${added.join(", ") || "nobody"}`);
+  const people = names.map((n) => (typeof n === "string" ? { name: n, id: null } : n)).map((p) => ({ ...p, label: p.label || p.name }));
+  if (people.some((p) => !p.id)) throw new Error(`No member number for ${people.filter((p) => !p.id).map((p) => p.name).join(", ")} in config`);
+  // Fast: send the form the moment it arrives, with every player's member number.
+  const r = await enterPlayers(page, people, { submit: !dryRun });
+  mark(`${slot.time}: ${dryRun ? "players entered" : "submitted"} (on it already: ${r.already.join(", ") || "nobody"}; added: ${r.added.join(", ") || "nobody"}; members ${r.ids.join(", ")}${r.scriptsReady ? "; BRS scripts were ready" : ""})`);
   if (dryRun) { await snap("dry-run-ready"); return true; }
-  // BRS labels the final button "Create Booking" (empty slot) or "Update Booking" (part-booked).
-  await page.getByRole("button", { name: /update booking|confirm|create booking|save booking|complete booking/i }).first().click({ timeout: 5000 });
-  mark(`${slot.time}: submitted`);
-  // Wait for whichever BRS answers with: "Booking confirmed", or the "Locked by another user" popup.
+  const afterSubmit = async (slowRetry) => {
+  // Wait for whichever BRS answers with: "Booking confirmed", the "Locked by another user" popup,
+  // or the entry form sent back (rejected).
   const confirmed = page.getByText(/booking confirmed|booking is confirmed/i).first();
-  await confirmed.or(locked).first().waitFor({ state: "visible", timeout: 10000 }).catch(() => {});
+  await Promise.race([
+    confirmed.or(locked).first().waitFor({ state: "visible", timeout: 10000 }),
+    page.waitForURL(/\/bookings\/store\//, { timeout: 10000 }).then(() => form.waitFor({ state: "attached", timeout: 5000 })),
+  ]).catch(() => {});
   const body = await page.locator("body").innerText().catch(() => "");
   const isConfirmed = /booking (confirmed|complete|successful|made)|successfully (booked|entered)|your booking|entry (confirmed|received)/i.test(body);
   if (isConfirmed) {
@@ -245,9 +262,23 @@ async function tryBook(page, config, dayIso, slot, names, { dryRun, snap, log, m
     snap(`${dayIso}-${slot.time.replace(":", "")}-refused`, { quick: true });
     throw new LockedError(text);
   }
+  // BRS sent the entry form back: the entry didn't go through. Try once more the slow, proven way:
+  // wait for BRS's scripts to finish setting the form up, enter the players, press Create Booking.
+  if (!slowRetry && (await form.count()) && /\/bookings\/(book|store)\//.test(page.url())) {
+    const err = await page.locator(".form-error, .invalid-feedback, .alert-danger, .error").allInnerTexts().catch(() => []);
+    mark(`${slot.time}: BRS sent the form back${err.length ? ` (${err.join(" / ").slice(0, 160)})` : ""}; entering the slow way`);
+    snap(`${dayIso}-${slot.time.replace(":", "")}-form-back`, { quick: true });
+    await page.waitForFunction(() => [...document.querySelectorAll('select[id^="member_booking_form_player_"]')].every((el) => el.classList.contains("select2-hidden-accessible")), null, { timeout: 10000 }).catch(() => {});
+    await enterPlayers(page, people, { submit: false });
+    await page.locator("#member_booking_form_confirm_booking").click({ timeout: 5000 });
+    mark(`${slot.time}: submitted (slow way)`);
+    return afterSubmit(true);
+  }
   // Anything else is unclear: the entry may have gone through, so never move on to another slot.
   await snap(`${dayIso}-${slot.time.replace(":", "")}-result`);
   throw new SubmittedError("Submitted, but no confirmation message seen");
+  };
+  return afterSubmit(false);
 }
 
 /** Thrown once the final button has been pressed: the entry may exist, so trying another slot could double-book. */
@@ -330,6 +361,8 @@ export async function bookDay(page, config, dayIso, partners, { dryRun, watchOnl
   const retryAt = new Map(); // tee time -> when it may be tried again (locks run out; other failures never)
   const group = [...partners], dropped = [];
   const me = Object.values(config.players).find((p) => p.isBookingAccount).name;
+  // Each player as BRS knows them: member number, and the "Surname, First" label its lists use.
+  const person = (name) => ({ name, id: Object.values(config.players).find((p) => p.name === name)?.memberId ?? null, label: name.split(" ").reverse().join(", ") });
   const request = page.context().request;
   const ready = (s) => (retryAt.get(s.time) ?? 0) <= Date.now();
   const fits = (open) => orderSlots(open, config.earliestTeeTime, config.latestTeeTime, group.length + 1);
@@ -380,7 +413,7 @@ export async function bookDay(page, config, dayIso, partners, { dryRun, watchOnl
     }
     for (const slot of slots) {
       try {
-        if (await tryBook(page, config, dayIso, slot, [me, ...group], { dryRun, snap, log, mark })) return { time: slot.time, unconfirmed: false, dropped };
+        if (await tryBook(page, config, dayIso, slot, [me, ...group].map(person), { dryRun, snap, log, mark })) return { time: slot.time, unconfirmed: false, dropped };
       } catch (e) {
         if (e instanceof SubmittedError) {
           log(`${dayIso} ${slot.time}: ${e.message}. Stopping this day so it can't double-book; check BRS.`);

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { bookDay, parseSheet } from "../src/booker/brs.mjs";
 
-const MEMBERS = ["Maloney, Daniel", "Armstrong, Mark", "Crowther, Hugh", "Duffield, Peter"];
+const MEMBERS = [["Maloney, Daniel", "3585"], ["Armstrong, Mark", "3589"], ["Crowther, Hugh", "3593"], ["Duffield, Peter", "3792"], ["Crowther JNR, Rocky", "4100"]];
 
 /** The tee sheet feed as BRS sends it. `rows`: [{ time, comp, people: [name|null|"x" x4], bookable }]. */
 function feed(rows, firstComp) {
@@ -23,31 +23,41 @@ function feed(rows, firstComp) {
 }
 
 /**
- * A fake BRS tab. The feed returns `rows`; opening a booking link shows the entry form with four
- * player <select>s pre-filled from `form`, unless that time is in `lockedTimes`.
+ * A fake BRS tab. The feed returns `rows`. Opening a booking link shows the entry form: four player
+ * <select>s listing every member (pre-filled from `form`), unless that time is in `lockedTimes`.
+ * Submitting: refusedAtSubmit -> "Locked by another user"; silentAtSubmit -> no answer at all;
+ * formBackAtSubmit -> the form comes back (rejected) until Create Booking is pressed the slow way.
  */
-function fakePage(rows, { form = ["Maloney, Daniel"], picked = [], firstComp = null, lockedTimes = [], opened = [], refusedAtSubmit = [], silentAtSubmit = [], submitted = [] } = {}) {
-  let current = null, pressed = false;
+function fakePage(rows, { form = ["Maloney, Daniel"], picked = [], firstComp = null, lockedTimes = [], opened = [],
+  refusedAtSubmit = [], silentAtSubmit = [], formBackAtSubmit = [], submitted = [], sent = [] } = {}) {
+  let current = null, pressed = false, slowPressed = false, boxes = [];
   const refused = () => pressed && refusedAtSubmit.includes(current);
   const silent = () => pressed && silentAtSubmit.includes(current);
+  const formBack = () => pressed && formBackAtSubmit.includes(current) && !slowPressed;
   const isLocked = () => (current && lockedTimes.includes(current)) || refused();
-  // Player boxes as BRS renders them: <select> with every member as an option; taken spaces disabled.
-  const options = [{ value: "", textContent: "Start typing to find player..." }, ...MEMBERS.map((m, j) => ({ value: String(100 + j), textContent: m }))];
-  const selects = () => [0, 1, 2, 3].map((i) => {
-    const pre = form[i] ? options.find((o) => o.textContent === form[i]) : null;
+  const options = () => [{ value: "", textContent: "Start typing to find player..." }, ...MEMBERS.map(([t, v]) => ({ value: v, textContent: t }))];
+  const makeBoxes = () => [0, 1, 2, 3].map((i) => {
+    const opts = options();
+    const pre = form[i] ? opts.find((o) => o.textContent === form[i]) : null;
     return {
-      id: `member_booking_form_player_${i + 1}`, disabled: !!pre, value: pre ? pre.value : "", options,
-      get selectedOptions() { return options.filter((o) => o.value && o.value === this.value); },
+      id: `member_booking_form_player_${i + 1}`, name: `member_booking_form[player_${i + 1}]`, disabled: !!pre, value: pre ? pre.value : "", options: opts,
+      classList: { contains: () => false },
+      get selectedOptions() { return this.options.filter((o) => o.value && o.value === this.value); },
+      appendChild(o) { this.options.push(o); },
       dispatchEvent(ev) { if (ev.type === "change") picked.push([i + 1, this.selectedOptions[0].textContent]); return true; },
     };
   });
-  const fields = [];
+  const doc = {
+    querySelector: (sel) => (sel.startsWith("form") ? { querySelectorAll: () => boxes, requestSubmit: () => { pressed = true; submitted.push(current); sent.push(boxes.map((b) => b.value).filter(Boolean)); } } : null),
+    querySelectorAll: () => boxes,
+    getElementById: () => ({}),
+  };
+  class FakeOption { constructor(text, value, _d, sel) { this.textContent = text; this.value = value; this.selected = sel; } }
   const formLoc = {
     first() { return this; },
     or() { return { first() { return this; }, waitFor: async () => {} }; },
     waitFor: async () => {},
-    count: async () => (isLocked() ? 0 : 4),
-    nth: (i) => fields[i],
+    count: async () => (isLocked() || (pressed && !formBack()) ? 0 : 4),
   };
   const lockLoc = {
     first() { return this; }, filter() { return this; }, waitFor: async () => {},
@@ -56,25 +66,35 @@ function fakePage(rows, { form = ["Maloney, Daniel"], picked = [], firstComp = n
     click: async () => {},
   };
   const request = { get: async () => ({ ok: () => true, status: () => 200, json: async () => feed(rows, firstComp) }) };
-  const confirmedText = () => (pressed && !refused() && !silent() ? "Booking confirmed. Your booking is confirmed." : "Tee sheet");
+  const answer = () => (pressed && !refused() && !silent() && !formBack() ? "Booking confirmed. Your booking is confirmed." : "Tee sheet");
   return {
     context: () => ({ request }),
-    goto: async (url) => { const m = url.match(/\/(\d{4})$/); current = m ? `${m[1].slice(0, 2)}:${m[1].slice(2)}` : null; pressed = false; opened.push(current); },
-    getByRole: () => ({ first() { return this; }, click: async () => { pressed = true; submitted.push(current); } }),
+    goto: async (url) => { const m = url.match(/\/(\d{4})$/); current = m ? `${m[1].slice(0, 2)}:${m[1].slice(2)}` : null; pressed = false; slowPressed = false; boxes = makeBoxes(); opened.push(current); },
     getByText: () => ({ first() { return this; }, or() { return { first() { return this; }, waitFor: async () => {} }; } }),
     waitForURL: () => new Promise(() => {}),
-    url: () => "https://x/c/bookings/book/...",
+    waitForFunction: async () => {},
+    url: () => (formBack() ? "https://x/c/bookings/store/1/20261128/0812" : pressed ? "https://x/c/tee-sheet/1/2026/11/28" : "https://x/c/bookings/book/tok/1/20261128/0812"),
     waitForLoadState: async () => {},
-    evaluate: async (fn, arg) => { const doc = { querySelectorAll: () => selects() }; globalThis.document = doc; try { return fn(arg); } finally { delete globalThis.document; } },
-    locator: (sel) => (sel.startsWith("select[id^=") ? formLoc : sel === "body" ? { innerText: async () => confirmedText() } : lockLoc),
+    evaluate: async (fn, arg) => {
+      const saved = { document: globalThis.document, Option: globalThis.Option, window: globalThis.window };
+      globalThis.document = doc; globalThis.Option = FakeOption; globalThis.window = {}; // no jQuery: BRS's scripts not loaded yet
+      try { return fn(arg); } finally { Object.assign(globalThis, saved); }
+    },
+    locator: (sel) => {
+      if (sel.startsWith("select[id^=")) return formLoc;
+      if (sel === "body") return { innerText: async () => answer() };
+      if (sel === "#member_booking_form_confirm_booking") return { click: async () => { slowPressed = true; submitted.push(`${current} (slow)`); sent.push(boxes.map((b) => b.value).filter(Boolean)); } };
+      if (sel.includes("form-error")) return { allInnerTexts: async () => ["Please select a player"] };
+      return lockLoc;
+    },
   };
 }
 const config = {
   baseUrl: "https://x", club: "c", courseId: 1, earliestTeeTime: "07:00", latestTeeTime: "23:59",
   competitionsOnly: true, retryWindowSeconds: 2, twoBallAfterSeconds: 60,
-  players: { dan: { name: "Daniel Maloney", isBookingAccount: true }, mark: { name: "Mark Armstrong" }, hugh: { name: "Hugh Crowther" } },
+  players: { dan: { name: "Daniel Maloney", isBookingAccount: true, memberId: 3585 }, mark: { name: "Mark Armstrong", memberId: 3589 }, hugh: { name: "Hugh Crowther", memberId: 3593 } },
 };
-const opts = { dryRun: true, snap: async () => {}, log: () => {} };
+const opts = { dryRun: true, snap: async () => {}, log: (m) => process.env.DEBUG_LOG && console.log(m) };
 const partners = ["Mark Armstrong", "Hugh Crowther"];
 const empty = [null, null, null, "x"];
 
@@ -266,4 +286,28 @@ test("no confirmation and no refusal: stops, so it can't double-book", async () 
   const r = await bookDay(fakePage(rows, { silentAtSubmit: ["08:12"], submitted }), config, "2026-11-28", partners, book);
   assert.deepEqual(r, { time: "08:12", unconfirmed: true, dropped: [] });
   assert.deepEqual(submitted, ["08:12"], "never pressed Create Booking on another slot");
+});
+
+test("sends all three member numbers with the form, Dan's included", async () => {
+  const sent = [];
+  await bookDay(fakePage([{ time: "08:12", comp: true, people: empty }], { form: [], sent }), config, "2026-11-28", partners, book);
+  assert.deepEqual(sent, [["3585", "3589", "3593"]]);
+});
+
+test("if BRS sends the form back, enters the slow way once and books", async () => {
+  const submitted = [];
+  const r = await bookDay(fakePage([{ time: "08:12", comp: true, people: empty }], { formBackAtSubmit: ["08:12"], submitted }), config, "2026-11-28", partners, book);
+  assert.deepEqual(r, { time: "08:12", unconfirmed: false, dropped: [] });
+  assert.deepEqual(submitted, ["08:12", "08:12 (slow)"]);
+});
+
+test("a member number the rebuilt box lacks is added, not skipped", async () => {
+  const sent = [];
+  const page = fakePage([{ time: "08:12", comp: true, people: empty }], { form: ["Maloney, Daniel"], sent });
+  const goto = page.goto;
+  page.goto = async (url) => { await goto(url); }; // boxes start with the full list; remove Mark to mimic a rebuilt box
+  const origEval = page.evaluate;
+  page.evaluate = async (fn, arg) => origEval((a) => { for (const b of document.querySelectorAll()) b.options = b.options.filter((o) => o.value !== "3589" || b.disabled); return fn(a); }, arg);
+  await bookDay(page, config, "2026-11-28", partners, book);
+  assert.deepEqual(sent, [["3585", "3589", "3593"]]);
 });
