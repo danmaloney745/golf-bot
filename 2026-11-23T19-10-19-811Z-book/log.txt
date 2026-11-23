@@ -1,0 +1,19 @@
+2026-11-23T19:10:19.840Z Mode book, target weekend 2026-11-28/2026-11-29, opens 2026-11-23 19:16
+2026-11-23T19:12:03.807Z Logged in
+2026-11-23T19:15:30.027Z sat: 3 player(s)
+2026-11-23T19:15:30.060Z sun: 3 player(s)
+2026-11-23T19:15:35.201Z Clock: BRS is 8ms ahead of AWS (±128ms; readings 8, 25, -2, 14, 5)
+2026-11-23T19:16:00.117Z [sat] 2026-11-28: first competition slot is 08:04; aiming for the next one
+2026-11-23T19:16:00.117Z [sat] 2026-11-28 entry open: seen by poller 0 after 14 requests; last closed check sent at -217ms (-98ms)
+2026-11-23T19:16:00.118Z [sat] 2026-11-28 08:12: opening booking link (+126ms)
+2026-11-23T19:16:01.606Z [sat] 2026-11-28 08:12: form open (+1614ms)
+2026-11-23T19:16:03.169Z [sat] 2026-11-28 08:12: already on it: Maloney, Daniel, Member not in list; adding: Mark Armstrong, Hugh Crowther
+2026-11-23T19:16:03.806Z [sat] 2026-11-28 08:12: submitted (+3814ms)
+2026-11-23T19:16:13.728Z [sat] 2026-11-28 08:12: Submitted, but no confirmation message seen. Stopping this day so it can't double-book; check BRS.
+2026-11-23T19:16:20.135Z [sun] 2026-11-29: nothing opened within 20s of the opening time
+2026-11-23T19:21:02.468Z [sun] 2026-11-29: nothing entered within 300s of opening
+2026-11-23T19:21:03.981Z [sun] retrying on its own for up to 210s
+2026-11-23T19:21:24.244Z [sun] 2026-11-29: nothing opened within 20s of the opening time
+2026-11-23T19:24:35.587Z [sun] 2026-11-29: nothing entered within 210s of opening
+2026-11-23T19:24:37.143Z sat: submitted 08:12? but unconfirmed
+2026-11-23T19:24:37.143Z sun: not booked
