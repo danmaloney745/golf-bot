@@ -190,7 +190,8 @@ async function fillPlayers(page, names) {
 }
 
 async function tryBook(page, config, dayIso, slot, names, { dryRun, snap, log, mark }) {
-  // Opening the booking link is exactly what Book Now does; BRS locks the slot for us on this request.
+  // Opening the booking link is exactly what Book Now does. BRS may still give the slot to someone
+  // else before we press Create Booking (seen 23 Nov), so the answer to that press is checked too.
   mark(`${slot.time}: opening booking link`);
   await page.goto(config.baseUrl + slot.path, { waitUntil: "commit" });
   // Either the entry form opens, or BRS says another member holds the slot, or sends us back to the sheet.
@@ -217,12 +218,26 @@ async function tryBook(page, config, dayIso, slot, names, { dryRun, snap, log, m
   // BRS labels the final button "Create Booking" (empty slot) or "Update Booking" (part-booked).
   await page.getByRole("button", { name: /update booking|confirm|create booking|save booking|complete booking/i }).first().click({ timeout: 5000 });
   mark(`${slot.time}: submitted`);
-  // From here the entry may have gone through, so never move on to another slot.
-  await page.waitForLoadState("domcontentloaded").catch(() => {});
-  await page.getByText(/booking confirmed|booking is confirmed/i).first().waitFor({ timeout: 8000 }).catch(() => {});
-  await snap(`${dayIso}-${slot.time.replace(":", "")}-result`);
+  // Wait for whichever BRS answers with: "Booking confirmed", or the "Locked by another user" popup.
+  const confirmed = page.getByText(/booking confirmed|booking is confirmed/i).first();
+  await confirmed.or(locked).first().waitFor({ state: "visible", timeout: 10000 }).catch(() => {});
   const body = await page.locator("body").innerText().catch(() => "");
-  if (/booking (confirmed|complete|successful|made)|successfully (booked|entered)|your booking|entry (confirmed|received)/i.test(body)) { mark(`${slot.time}: confirmed`); return true; }
+  const isConfirmed = /booking (confirmed|complete|successful|made)|successfully (booked|entered)|your booking|entry (confirmed|received)/i.test(body);
+  if (isConfirmed) {
+    mark(`${slot.time}: confirmed`);
+    await snap(`${dayIso}-${slot.time.replace(":", "")}-result`);
+    return true;
+  }
+  // Refused: BRS says another member holds the slot and shows no confirmation, so the entry didn't go
+  // through and it's safe to try the next slot. The page is saved in the background, so nothing waits.
+  if (await locked.count()) {
+    const text = await locked.first().innerText().catch(() => "");
+    mark(`${slot.time}: refused at Create Booking (locked by another member)`);
+    snap(`${dayIso}-${slot.time.replace(":", "")}-refused`, { quick: true });
+    throw new LockedError(text);
+  }
+  // Anything else is unclear: the entry may have gone through, so never move on to another slot.
+  await snap(`${dayIso}-${slot.time.replace(":", "")}-result`);
   throw new SubmittedError("Submitted, but no confirmation message seen");
 }
 

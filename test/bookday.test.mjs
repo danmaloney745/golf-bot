@@ -26,9 +26,11 @@ function feed(rows, firstComp) {
  * A fake BRS tab. The feed returns `rows`; opening a booking link shows the entry form with four
  * player <select>s pre-filled from `form`, unless that time is in `lockedTimes`.
  */
-function fakePage(rows, { form = ["Maloney, Daniel"], picked = [], firstComp = null, lockedTimes = [], opened = [] } = {}) {
-  let current = null;
-  const isLocked = () => current && lockedTimes.includes(current);
+function fakePage(rows, { form = ["Maloney, Daniel"], picked = [], firstComp = null, lockedTimes = [], opened = [], refusedAtSubmit = [], silentAtSubmit = [], submitted = [] } = {}) {
+  let current = null, pressed = false;
+  const refused = () => pressed && refusedAtSubmit.includes(current);
+  const silent = () => pressed && silentAtSubmit.includes(current);
+  const isLocked = () => (current && lockedTimes.includes(current)) || refused();
   const fields = [0, 1, 2, 3].map((i) => ({
     evaluate: async () => [!!form[i], form[i] || ""],
     locator: () => ({ allTextContents: async () => ["Start typing to find player...", ...MEMBERS] }),
@@ -48,13 +50,16 @@ function fakePage(rows, { form = ["Maloney, Daniel"], picked = [], firstComp = n
     click: async () => {},
   };
   const request = { get: async () => ({ ok: () => true, status: () => 200, json: async () => feed(rows, firstComp) }) };
+  const confirmedText = () => (pressed && !refused() && !silent() ? "Booking confirmed. Your booking is confirmed." : "Tee sheet");
   return {
     context: () => ({ request }),
-    goto: async (url) => { const m = url.match(/\/(\d{4})$/); current = m ? `${m[1].slice(0, 2)}:${m[1].slice(2)}` : null; opened.push(current); },
+    goto: async (url) => { const m = url.match(/\/(\d{4})$/); current = m ? `${m[1].slice(0, 2)}:${m[1].slice(2)}` : null; pressed = false; opened.push(current); },
+    getByRole: () => ({ first() { return this; }, click: async () => { pressed = true; submitted.push(current); } }),
+    getByText: () => ({ first() { return this; }, or() { return { first() { return this; }, waitFor: async () => {} }; } }),
     waitForURL: () => new Promise(() => {}),
     url: () => "https://x/c/bookings/book/...",
     waitForLoadState: async () => {},
-    locator: (sel) => (sel.startsWith("select[id^=") ? formLoc : lockLoc),
+    locator: (sel) => (sel.startsWith("select[id^=") ? formLoc : sel === "body" ? { innerText: async () => confirmedText() } : lockLoc),
   };
 }
 const config = {
@@ -205,4 +210,31 @@ test("race: if the clock sync is wrong, still catches an opening outside the bur
   const fetch = async () => { await new Promise((r) => setTimeout(r, 30)); return { open: Date.now() >= trueOpenLocal }; };
   const r = await raceOpening(fetch, { opensAt, offset: 0, isOpen: (sh) => sh.open });
   assert.ok(r && r.sent - trueOpenLocal <= 250, `late by ${r && r.sent - trueOpenLocal}ms`);
+});
+
+// ---- pressing Create Booking
+
+const book = { ...opts, dryRun: false };
+
+test("books when BRS confirms", async () => {
+  const r = await bookDay(fakePage([{ time: "08:12", comp: true, people: empty }]), config, "2026-11-28", partners, book);
+  assert.deepEqual(r, { time: "08:12", unconfirmed: false, dropped: [] });
+});
+
+test("refused at Create Booking ('locked by another user'): moves straight on to the next slot", async () => {
+  const submitted = [];
+  const rows = ["08:12", "08:20", "08:36"].map((time) => ({ time, comp: true, people: empty }));
+  const t0 = Date.now();
+  const r = await bookDay(fakePage(rows, { refusedAtSubmit: ["08:12"], lockedTimes: ["08:20"], submitted }), config, "2026-11-28", partners, book);
+  assert.deepEqual(r, { time: "08:36", unconfirmed: false, dropped: [] });
+  assert.deepEqual(submitted, ["08:12", "08:36"], "pressed Create Booking on 08:12 (refused) then 08:36");
+  assert.ok(Date.now() - t0 < 1000);
+});
+
+test("no confirmation and no refusal: stops, so it can't double-book", async () => {
+  const submitted = [];
+  const rows = ["08:12", "08:20"].map((time) => ({ time, comp: true, people: empty }));
+  const r = await bookDay(fakePage(rows, { silentAtSubmit: ["08:12"], submitted }), config, "2026-11-28", partners, book);
+  assert.deepEqual(r, { time: "08:12", unconfirmed: true, dropped: [] });
+  assert.deepEqual(submitted, ["08:12"], "never pressed Create Booking on another slot");
 });
