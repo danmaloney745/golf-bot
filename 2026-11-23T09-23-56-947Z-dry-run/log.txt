@@ -1,0 +1,17 @@
+2026-11-23T09:23:56.977Z Mode dry-run, target weekend 2026-11-28/2026-11-29, opens 2026-11-23 19:16
+2026-11-23T09:23:59.180Z Rehearsal: 2026-11-26 and 2026-11-27 as Sat/Sun, 15:00-16:00, opening at 2026-11-23T09:24:39.180Z
+2026-11-23T09:24:02.889Z Logged in
+2026-11-23T09:24:09.180Z sat: 3 player(s)
+2026-11-23T09:24:09.208Z sun: 3 player(s)
+2026-11-23T09:24:15.199Z Clock: BRS is 21ms ahead of AWS (±52ms; readings 66, 52, 3, 21, 9)
+2026-11-23T09:24:36.389Z [sun] 2026-11-27 entry open: seen by poller 0 after 1 requests; last closed check sent at n/a (-2998ms)
+2026-11-23T09:24:36.390Z [sun] 2026-11-27 15:00: opening booking link (-2769ms)
+2026-11-23T09:24:36.394Z [sat] 2026-11-26: first competition slot is 09:48; aiming for the next one
+2026-11-23T09:24:36.394Z [sat] 2026-11-26 entry open: seen by poller 0 after 1 requests; last closed check sent at n/a (-2999ms)
+2026-11-23T09:24:36.395Z [sat] 2026-11-26 15:00: opening booking link (-2764ms)
+2026-11-23T09:24:38.592Z [sun] 2026-11-27 15:00: form open (-567ms)
+2026-11-23T09:24:39.272Z [sat] 2026-11-26 15:00: form open (+113ms)
+2026-11-23T09:24:41.359Z [sun] 2026-11-27 15:00: already on it: Maloney, Daniel; adding: Mark Armstrong, Hugh Crowther
+2026-11-23T09:24:41.371Z [sat] 2026-11-26 15:00: already on it: Maloney, Daniel; adding: Mark Armstrong, Hugh Crowther
+2026-11-23T09:24:41.868Z sat: booked 15:00
+2026-11-23T09:24:41.868Z sun: booked 15:00
