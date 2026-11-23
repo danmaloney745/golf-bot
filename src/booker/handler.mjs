@@ -25,7 +25,7 @@ async function brsCredentials() {
   return { user, pass };
 }
 
-export async function handler(event = {}) {
+export async function handler(event = {}, lambdaContext = null) {
   const mode = event.mode || "book";
   const runId = new Date().toISOString().replace(/[:.]/g, "-") + "-" + mode;
   const lines = [];
@@ -71,7 +71,13 @@ export async function handler(event = {}) {
 
   const result = { runId, mode, weekendOf: weekend.sat, sat: null, sun: null, log: lines };
   try {
-    const opens = dublinInstant(weekend.opens, config.opensAt);
+    // Rehearsal of the Monday path (dry-run only): two open casual days stand in for Sat/Sun,
+    // everyone is ticked, and the "opening" is 40s from now so clock sync and the race run for real.
+    const rehearse = mode === "dry-run" && event.rehearse ? event.rehearse : null;
+    const days = rehearse ? { sat: rehearse.sat, sun: rehearse.sun } : weekend;
+    const dayConfig = rehearse ? { ...config, competitionsOnly: false, emptyOnly: true, earliestTeeTime: rehearse.from || config.earliestTeeTime, latestTeeTime: rehearse.to || config.latestTeeTime } : config;
+    const opens = rehearse ? new Date(Date.now() + 40_000) : dublinInstant(weekend.opens, config.opensAt);
+    if (rehearse) log(`Rehearsal: ${days.sat} and ${days.sun} as Sat/Sun, ${dayConfig.earliestTeeTime}-${dayConfig.latestTeeTime}, opening at ${opens.toISOString()}`);
     if (mode === "book" && !event.now) await sleep(opens - Date.now() - 4 * 60_000);
     await login(page, config, await brsCredentials(), snap);
     log("Logged in");
@@ -155,7 +161,8 @@ export async function handler(event = {}) {
     }
 
     if (!event.now) await sleep(opens - Date.now() - 30_000);
-    const availability = (await getWeekend(weekend.sat)) || { sat: {}, sun: {} };
+    const everyone = Object.fromEntries(Object.keys(config.players).map((k) => [k, true]));
+    const availability = rehearse ? { sat: everyone, sun: everyone } : (await getWeekend(weekend.sat)) || { sat: {}, sun: {} };
 
     // Work out each day's group, and give each day its own tab so neither waits on the other.
     const jobs = [];
@@ -169,16 +176,16 @@ export async function handler(event = {}) {
       log(`${day}: ${keys.length} player(s)`);
     }
     // Warm each tab up on its sheet so BRS's scripts and styles are cached before the race.
-    await Promise.all(jobs.map((j) => j.tab.goto(teeSheetUrl(config, weekend[j.day]), { waitUntil: "domcontentloaded" }).catch(() => {})));
+    await Promise.all(jobs.map((j) => j.tab.goto(teeSheetUrl(config, days[j.day]), { waitUntil: "domcontentloaded" }).catch(() => {})));
     const opensAt = event.now ? Date.now() : opens.getTime();
     // Sync to BRS's clock: it decides the opening moment, not ours.
     let offset = 0;
     if (!event.now && jobs.length) {
-      const sync = await measureOffset(dateFetcher(context.request, teeSheetUrl(config, weekend[jobs[0].day])));
+      const sync = await measureOffset(dateFetcher(context.request, teeSheetUrl(config, days[jobs[0].day])));
       offset = sync.offset;
       log(`Clock: BRS is ${sync.offset}ms ${sync.offset >= 0 ? "ahead of" : "behind"} AWS (±${sync.error}ms; readings ${sync.readings.join(", ")})`);
     }
-    const run = (j) => bookDay(j.tab, config, weekend[j.day], j.partners, { dryRun: mode === "dry-run", snap: j.snap, log: (m) => log(`[${j.day}] ${m}`), opensAt, offset });
+    const run = (j, cfg = dayConfig) => bookDay(j.tab, cfg, days[j.day], j.partners, { dryRun: mode === "dry-run", snap: j.snap, log: (m) => log(`[${j.day}] ${m}`), opensAt, offset });
 
     // Start polling the sheet 2.5s early so the bot sees the slots the moment BRS opens them.
     if (!event.now) await sleep(opens - offset - Date.now() - 3000);
@@ -196,8 +203,11 @@ export async function handler(event = {}) {
     // If BRS only lets one entry be in progress per account, the parallel attempt can lose. Retry those days one at a time.
     if (jobs.length > 1) {
       for (const j of jobs.filter((j) => result[j.day] === null)) {
-        log(`[${j.day}] retrying on its own`);
-        try { record(j, await run(j)); } catch (e) { log(`[${j.day}] retry error: ${e.message}`); }
+        // Only the time the Lambda has left (it's stopped 15 min after starting), keeping 45s to save the result.
+        const left = Math.floor(((lambdaContext?.getRemainingTimeInMillis?.() ?? 120_000) - 45_000) / 1000);
+        if (left < 10) { log(`[${j.day}] no time left to retry on its own`); continue; }
+        log(`[${j.day}] retrying on its own for up to ${left}s`);
+        try { record(j, await run(j, { ...dayConfig, retryWindowSeconds: Math.min(left, dayConfig.retryWindowSeconds) })); } catch (e) { log(`[${j.day}] retry error: ${e.message}`); }
       }
     }
     for (const j of jobs) {
@@ -214,6 +224,6 @@ export async function handler(event = {}) {
     await Promise.allSettled(uploads);
     await browser.close().catch(() => {});
     await s3.send(new PutObjectCommand({ Bucket: process.env.RUNS_BUCKET, Key: `runs/${runId}/log.txt`, Body: lines.join("\n"), ContentType: "text/plain" })).catch(() => {});
-    if (mode !== "recon" && !event.date) await saveResult(weekend.sat, { runId, mode, sat: result.sat, sun: result.sun, satMissing: result.satMissing || [], sunMissing: result.sunMissing || [], error: result.error || null, at: new Date().toISOString() }).catch((e) => console.error("saveResult", e));
+    if (mode !== "recon" && !event.date && !event.rehearse) await saveResult(weekend.sat, { runId, mode, sat: result.sat, sun: result.sun, satMissing: result.satMissing || [], sunMissing: result.sunMissing || [], error: result.error || null, at: new Date().toISOString() }).catch((e) => console.error("saveResult", e));
   }
 }

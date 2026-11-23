@@ -30,6 +30,9 @@ on:
       at:
         description: "Watch only: the opening time (HH:MM, Dublin)"
         default: ""
+      rehearse:
+        description: "Dry-run only: two open casual dates as Sat,Sun (e.g. 2026-11-26,2026-11-27) to rehearse the Monday run"
+        default: ""
       click:
         description: "Recon only: open one booking form (books nothing) and log its requests"
         type: boolean
@@ -63,6 +66,7 @@ jobs:
           TO: ${{ inputs.to }}
           CASUAL: ${{ inputs.casual }}
           CLICK: ${{ inputs.click }}
+          REHEARSE: ${{ inputs.rehearse }}
           OPENS_DAY: ${{ inputs.opens_day }}
           AT: ${{ inputs.at }}
         run: |
@@ -70,8 +74,9 @@ jobs:
           FN=$(out BookerFunctionName); BUCKET=$(out RunsBucketName)
           echo "BUCKET=$BUCKET" >> "$GITHUB_ENV"
           if [ "$MODE" = "book" ] && [ -z "$DATE" ]; then echo "::error::Real bookings from a test run need a date"; exit 1; fi
-          PAYLOAD=$(jq -cn --arg mode "$MODE" --arg date "$DATE" --arg from "$FROM" --arg to "$TO" --argjson casual "$CASUAL" --argjson click "$CLICK" --arg opensDay "$OPENS_DAY" --arg at "$AT" \
-            '{mode:$mode, now:true, click:$click} + (if $date != "" then {date:$date, casual:$casual} else {} end)
+          PAYLOAD=$(jq -cn --arg mode "$MODE" --arg date "$DATE" --arg from "$FROM" --arg to "$TO" --argjson casual "$CASUAL" --argjson click "$CLICK" --arg opensDay "$OPENS_DAY" --arg at "$AT" --arg rehearse "$REHEARSE" \
+            '{mode:$mode, now:($rehearse == ""), click:$click} + (if $date != "" then {date:$date, casual:$casual} else {} end)
+             + (if $rehearse != "" then {rehearse: ($rehearse | split(",") | {sat: .[0], sun: .[1], from: $from, to: $to})} else {} end)
              + (if $opensDay != "" then {opensDay:$opensDay, at:$at} else {} end)
              + (if $from != "" then {from:$from} else {} end) + (if $to != "" then {to:$to} else {} end)')
           echo "Payload: $PAYLOAD"
