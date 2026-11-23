@@ -1,0 +1,14 @@
+2026-11-23T19:42:14.562Z Mode dry-run, target weekend 2026-11-28/2026-11-29, opens 2026-11-23 19:16
+2026-11-23T19:42:20.951Z Logged in
+2026-11-23T19:42:21.207Z Before: 2026-11-27 (0ms) 15:00 open(4) | 15:08 open(4) | 15:16 open(4)
+2026-11-23T19:42:21.443Z 2026-11-26 check sent +0ms, 235ms: 15:00 open(4) | 15:08 open(4) | 15:16 open(4)
+2026-11-23T19:42:21.444Z 2026-11-26: first competition slot is 09:48; aiming for the next one
+2026-11-23T19:42:21.444Z 2026-11-26 entry open: seen by poller 0 after 2 requests; last closed check sent at n/a (+0ms)
+2026-11-23T19:42:21.444Z 2026-11-26 15:00: opening booking link (+236ms)
+2026-11-23T19:42:22.776Z 2026-11-26 15:00: form open (+1568ms)
+2026-11-23T19:42:24.813Z 2026-11-26 15:00: already on it: Maloney, Daniel; adding: Mark Armstrong, Hugh Crowther
+2026-11-23T19:42:25.074Z Holding a form on 2026-11-26 15:00
+2026-11-23T19:42:25.303Z While holding (1): 2026-11-27 (0ms) 15:00 open(4) | 15:08 open(4) | 15:16 open(4)
+2026-11-23T19:42:28.543Z While holding (2): 2026-11-27 (0ms) 15:00 open(4) | 15:08 open(4) | 15:16 open(4)
+2026-11-23T19:42:31.748Z While holding (3): 2026-11-27 (0ms) 15:00 open(4) | 15:08 open(4) | 15:16 open(4)
+2026-11-23T19:42:34.986Z While holding (4): 2026-11-27 (0ms) 15:00 open(4) | 15:08 open(4) | 15:16 open(4)
