@@ -1,0 +1,21 @@
+2026-11-23T09:18:03.008Z Mode dry-run, target weekend 2026-11-28/2026-11-29, opens 2026-11-23 19:16
+2026-11-23T09:18:05.578Z Rehearsal: 2026-11-26 and 2026-11-27 as Sat/Sun, 15:00-16:00, opening at 2026-11-23T09:18:45.578Z
+2026-11-23T09:18:09.639Z Logged in
+2026-11-23T09:18:15.578Z sat: 3 player(s)
+2026-11-23T09:18:15.606Z sun: 3 player(s)
+2026-11-23T09:18:21.171Z Clock: BRS is 33ms ahead of AWS (±58ms; readings 32, 38, 17, 33, 44)
+2026-11-23T09:18:42.545Z [sat] error: Cannot convert undefined or null to object
+2026-11-23T09:18:42.545Z [sun] error: Cannot convert undefined or null to object
+2026-11-23T09:18:42.546Z [sat] retrying on its own for up to 815s
+2026-11-23T09:18:42.905Z [sat] 2026-11-26: first competition slot is 09:48; aiming for the next one
+2026-11-23T09:18:42.906Z [sat] 2026-11-26 entry open: seen by poller 0 after 1 requests; last closed check sent at n/a (-2999ms)
+2026-11-23T09:18:42.906Z [sat] 2026-11-26 15:00: opening booking link (-2639ms)
+2026-11-23T09:18:44.934Z [sat] 2026-11-26 15:00: form open (-611ms)
+2026-11-23T09:18:46.472Z [sat] 2026-11-26 15:00: already on it: Maloney, Daniel; adding: Mark Armstrong, Hugh Crowther
+2026-11-23T09:18:46.755Z [sun] retrying on its own for up to 811s
+2026-11-23T09:18:47.005Z [sun] 2026-11-27 entry open: seen by poller 1 after 2 requests; last closed check sent at n/a (+1210ms)
+2026-11-23T09:18:47.005Z [sun] 2026-11-27 15:00: opening booking link (+1460ms)
+2026-11-23T09:18:48.316Z [sun] 2026-11-27 15:00: form open (+2771ms)
+2026-11-23T09:18:49.773Z [sun] 2026-11-27 15:00: already on it: Maloney, Daniel; adding: Mark Armstrong, Hugh Crowther
+2026-11-23T09:18:50.054Z sat: booked 15:00
+2026-11-23T09:18:50.054Z sun: booked 15:00
